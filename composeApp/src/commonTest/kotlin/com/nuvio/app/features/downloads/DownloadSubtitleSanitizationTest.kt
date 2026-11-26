@@ -18,6 +18,12 @@ class DownloadSubtitleSanitizationTest {
     }
 
     @Test
+    fun convertsArabicWebVttToSrtSidecarFormat() {
+        val vtt = "WEBVTT\\n\\n00:00:01.250 --> 00:00:02.500 align:start\\nمرحبا"
+        assertEquals("00:00:01,250 --> 00:00:02,500\\nمرحبا", normalizeArabicSubtitleToSrt(vtt, "subtitle.vtt").trim())
+    }
+
+    @Test
     fun prefersArabicLanguageTagsAndArabicNamedTracks() {
         assertTrue(isArabicDownloadSubtitle(StreamSubtitle(url = "https://example.test/a.srt", language = "ara")))
         assertTrue(isArabicDownloadSubtitle(StreamSubtitle(url = "https://example.test/a.srt", language = "en", name = "ترجمة عربية")))

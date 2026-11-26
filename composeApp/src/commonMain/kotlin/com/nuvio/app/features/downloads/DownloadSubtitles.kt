@@ -51,7 +51,13 @@ internal object DownloadSubtitles {
                             withTimeoutOrNull(15_000L) {
                                 httpGetTextWithHeaders(subtitle.url, subtitle.headers.orEmpty())
                             }?.let(::sanitizeDownloadedSubtitle)
-                                ?.takeIf { it.isNotBlank() && PlayerSubtitleCueParser.parse(it, subtitle.url).isNotEmpty() }
+                                ?.let { text ->
+                                    if (isArabicDownloadSubtitle(subtitle)) normalizeArabicSubtitleToSrt(text, subtitle.url) else text
+                                }
+                                ?.takeIf { text ->
+                                    val parseUrl = if (isArabicDownloadSubtitle(subtitle)) "offline.ar.srt" else subtitle.url
+                                    text.isNotBlank() && PlayerSubtitleCueParser.parse(text, parseUrl).isNotEmpty()
+                                }
                         } catch (error: Exception) {
                             if (error is CancellationException) throw error
                             null
@@ -63,7 +69,7 @@ internal object DownloadSubtitles {
             for ((subtitle, body) in fetched) {
                 currentCoroutineContext().ensureActive()
                 if (body == null) continue
-                val extension = PlayerSubtitleCueParser.fileExtension(body, subtitle.url)
+                val extension = if (isArabicDownloadSubtitle(subtitle)) "srt" else PlayerSubtitleCueParser.fileExtension(body, subtitle.url)
                 val fileName = if (isArabicDownloadSubtitle(subtitle)) {
                     if (extension.equals("srt", true)) "arabic.ar.srt" else "arabic.ar.$extension"
                 } else {
@@ -98,6 +104,23 @@ internal object DownloadSubtitles {
         runCatching {
             storage.read("manifest.json")?.let { json.decodeFromString<SubtitleManifest>(it) }
         }.getOrNull() ?: SubtitleManifest()
+}
+
+internal fun normalizeArabicSubtitleToSrt(text: String, sourceUrl: String): String {
+    if (!text.trimStart().startsWith("WEBVTT", ignoreCase = true) &&
+        !PlayerSubtitleCueParser.fileExtension(text, sourceUrl).equals("vtt", ignoreCase = true)
+    ) return text
+
+    val withoutHeader = text.replaceFirst(
+        Regex("(?i)^\\uFEFF?WEBVTT[^\\r\\n]*(?:\\r?\\n)?"),
+        "",
+    )
+    val normalizedTimestamps = Regex("(?:(\\d{2}):)?(\\d{2}):(\\d{2})\\.(\\d{3})")
+        .replace(withoutHeader) { match ->
+            "${match.groupValues[1].ifBlank { "00" }}:${match.groupValues[2]}:${match.groupValues[3]},${match.groupValues[4]}"
+        }
+    return Regex("(-->\\s*\\d{2}:\\d{2}:\\d{2},\\d{3})\\s+[^\\r\\n]+")
+        .replace(normalizedTimestamps, "$1")
 }
 
 internal fun isArabicDownloadSubtitle(subtitle: StreamSubtitle): Boolean =
