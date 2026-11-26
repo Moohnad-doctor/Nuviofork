@@ -76,6 +76,7 @@ import com.nuvio.app.core.ui.rememberArtworkBackdrop
 import com.nuvio.app.features.downloads.DownloadsRepository
 import com.nuvio.app.features.downloads.DownloadsPlatformDownloader
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
+import com.nuvio.app.features.details.MetaDetailsRepository
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -308,10 +309,17 @@ fun StreamsScreen(
 
 
     val enqueueSelectedStream: (StreamItem) -> Unit = { selectedStream ->
+        val collectionMeta = MetaDetailsRepository.peek(parentMetaType, parentMetaId)
+        val collectionName = collectionMeta?.collectionName
+        val collectionPoster = collectionMeta?.collectionItems?.firstOrNull()?.poster
+        val releaseYear = Regex("\\b(19|20)\\d{2}\\b").find(collectionMeta?.releaseInfo.orEmpty())?.value?.toIntOrNull()
         if (DirectDebridPlaybackResolver.shouldResolveToPlayableStream(selectedStream)) {
             downloadScope.launch {
                 val resolved = DirectDebridPlaybackResolver.resolveToPlayableStream(
                     stream = selectedStream,
+                collectionName = collectionName,
+                collectionPoster = collectionPoster,
+                releaseYear = releaseYear,
                     season = seasonNumber,
                     episode = episodeNumber,
                 )
@@ -331,6 +339,9 @@ fun StreamsScreen(
                             episodeTitle = episodeTitle,
                             episodeThumbnail = episodeThumbnail,
                             stream = resolved.stream,
+                            collectionName = collectionName,
+                            collectionPoster = collectionPoster,
+                            releaseYear = releaseYear,
                         )
                         NuvioToastController.show(result.toastMessage())
                     }

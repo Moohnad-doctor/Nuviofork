@@ -294,7 +294,7 @@ private fun LazyListScope.downloadsRootContent(
                     onOpen = { onOpenShow(entry.episodes.first()) },
                 )
                 is DownloadedEntry.Collection -> DownloadedCollectionRow(
-                    cover = entry.movies.first(),
+                    cover = entry.movies.first().copy(poster = entry.poster ?: entry.movies.first().poster),
                     title = entry.title,
                     movieCount = entry.movies.size,
                     sizeBytes = entry.movies.sumOf { it.sizeOnDiskBytes },
@@ -516,6 +516,7 @@ private sealed interface DownloadedEntry {
         val title: String,
         val movies: List<DownloadItem>,
         val normalizedName: String,
+        val poster: String? = null,
     ) : DownloadedEntry {
         override val key: String get() = "collection:$normalizedName"
         override val addedAtEpochMs: Long get() = movies.maxOf { it.createdAtEpochMs }
@@ -566,17 +567,38 @@ private fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
             )
         }
     val movieItems = completed.filterNot { it.isEpisode }
-    val partGroups = movieItems.mapNotNull { movie ->
+    fun normalizeCollectionName(value: String): String =
+        value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+    val metadataCollections = movieItems.filter { !it.collectionName.isNullOrBlank() }
+        .groupBy { normalizeCollectionName(it.collectionName.orEmpty()) }
+        .filter { (key, group) -> key.isNotBlank() && group.size >= 2 }
+    val metadataGroupedIds = metadataCollections.values.flatten().mapTo(mutableSetOf()) { it.id }
+    val metadataEntries = metadataCollections.map { (key, group) ->
+        val ordered = group.sortedWith(
+            compareBy<DownloadItem> { it.releaseYear ?: movieReleaseYear(it.title) ?: Int.MAX_VALUE }
+                .thenBy { parseMoviePart(it.title)?.part ?: Int.MAX_VALUE }
+                .thenBy { it.title.lowercase() },
+        )
+        DownloadedEntry.Collection(
+            title = group.first().collectionName.orEmpty(),
+            movies = ordered,
+            normalizedName = "metadata:$key",
+            poster = group.firstNotNullOfOrNull { it.collectionPoster },
+        )
+    }
+    val fallbackMovieItems = movieItems.filterNot { it.id in metadataGroupedIds }
+    val partGroups = fallbackMovieItems.mapNotNull { movie ->
         parseMoviePart(movie.title)?.let { it.normalized to (movie to it) }
     }.groupBy({ it.first }, { it.second })
-    val collections = partGroups.filterValues { it.size >= 2 }.map { (key, parts) ->
+    val fallbackCollections = partGroups.filterValues { it.size >= 2 }.map { (key, parts) ->
         val ordered = parts.sortedWith(
-            compareBy<Pair<DownloadItem, ParsedMoviePart>> { movieReleaseYear(it.first.title) ?: Int.MAX_VALUE }
+            compareBy<Pair<DownloadItem, ParsedMoviePart>> { it.first.releaseYear ?: movieReleaseYear(it.first.title) ?: Int.MAX_VALUE }
                 .thenBy { it.second.part }
                 .thenBy { it.first.title.lowercase() },
         ).map { it.first }
-        DownloadedEntry.Collection(parts.first().second.title, ordered, key)
+        DownloadedEntry.Collection(parts.first().second.title, ordered, "fallback:$key")
     }
+    val collections = metadataEntries + fallbackCollections
     val groupedIds = collections.flatMap { it.movies }.mapTo(mutableSetOf()) { it.id }
     val movies = movieItems.filterNot { it.id in groupedIds }.map { DownloadedEntry.Movie(it) }
     return (movies + shows + collections).sortedByDescending { it.addedAtEpochMs }

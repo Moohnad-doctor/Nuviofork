@@ -124,6 +124,9 @@ object DownloadsRepository {
         episodeTitle: String?,
         episodeThumbnail: String?,
         stream: StreamItem,
+        collectionName: String? = null,
+        collectionPoster: String? = null,
+        releaseYear: Int? = null,
     ): DownloadEnqueueResult {
         ensureLoaded()
 
@@ -192,6 +195,9 @@ object DownloadsRepository {
                 extras = SubtitleRequestExtras.from(stream.behaviorHints, sourceUrl),
             ),
             sourceSubtitles = stream.externalSubtitles,
+            collectionName = collectionName?.trim()?.takeIf { it.isNotBlank() },
+            collectionPoster = collectionPoster?.takeIf { it.isNotBlank() },
+            releaseYear = releaseYear,
             localFileUri = null,
             fileName = fileName,
             status = DownloadStatus.Downloading,
