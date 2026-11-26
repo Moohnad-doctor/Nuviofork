@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-arm64-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref }}
+  group: android-arm64-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
