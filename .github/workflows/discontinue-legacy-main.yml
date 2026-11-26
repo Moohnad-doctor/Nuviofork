@@ -162,10 +162,12 @@ jobs:
             });
 
   auto-close-pull-request:
-    if: github.event_name == 'pull_request_target'
+    # Only wind down PRs targeting the legacy React Native branch. The Compose rewrite
+    # lives on cmp-rewrite and must remain open for its own contribution workflow.
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - name: Close new pull requests for the legacy app
+      - name: Close new pull requests targeting legacy main
         uses: actions/github-script@v7
         with:
           script: |
