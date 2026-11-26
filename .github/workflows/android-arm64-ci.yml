@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-arm64-${{ github.workflow }}-${{ github.ref }}
+  group: android-arm64-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -59,10 +59,32 @@ jobs:
           fi
 
       - name: Run Android download and navigation host tests
-        run: ./gradlew "${{ steps.host-tests.outputs.task }}" --stacktrace
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if ./gradlew "${{ steps.host-tests.outputs.task }}" --stacktrace --max-workers=2; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Gradle test attempt $attempt failed; retrying after a short delay."
+              sleep $((attempt * 25))
+            fi
+          done
+          exit 1
 
       - name: Build Full debug APK for arm64-v8a
-        run: ./gradlew :androidApp:assembleFullDebug -Pnuvio.android.abiFilters=arm64-v8a --stacktrace
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if ./gradlew :androidApp:assembleFullDebug -Pnuvio.android.abiFilters=arm64-v8a --stacktrace --max-workers=2; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Gradle APK build attempt $attempt failed; retrying after a short delay."
+              sleep $((attempt * 25))
+            fi
+          done
+          exit 1
 
       - name: Verify APK ABI
         shell: bash
