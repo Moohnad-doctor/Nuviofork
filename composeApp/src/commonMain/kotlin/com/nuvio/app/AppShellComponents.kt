@@ -26,6 +26,8 @@ import com.nuvio.app.features.cloud.CloudLibraryContentType
 import com.nuvio.app.features.cloud.CloudLibraryFile
 import com.nuvio.app.features.cloud.CloudLibraryItem
 import com.nuvio.app.features.home.HomeCatalogSection
+import com.nuvio.app.features.downloads.DownloadItem
+import com.nuvio.app.features.downloads.DownloadsScreen
 import com.nuvio.app.features.home.HomeScreen
 import com.nuvio.app.features.home.MetaPreview
 import com.nuvio.app.features.library.LibraryItem
@@ -93,6 +95,9 @@ internal data class AppTabActions(
     val onCloudFilePlay: ((CloudLibraryItem, CloudLibraryFile) -> Unit)? = null,
     val onConnectCloudClick: (() -> Unit)? = null,
     val onDownloadsClick: () -> Unit = {},
+    val onDownloadsBack: () -> Unit = {},
+    val onOpenDownload: (DownloadItem) -> Unit = {},
+    val onOpenDownloadDetails: (DownloadItem) -> Unit = {},
     val onContinueWatchingClick: ((ContinueWatchingItem) -> Unit)? = null,
     val onContinueWatchingLongPress: ((ContinueWatchingItem) -> Unit)? = null,
     val onSwitchProfile: (() -> Unit)? = null,
@@ -145,6 +150,10 @@ internal fun AppTabHost(
                         onFirstCatalogRendered = actions.onInitialHomeContentRendered,
                     )
                 }
+            }
+
+            AppScreenTab.Downloads -> {
+                DownloadsScreen(onBack = actions.onDownloadsBack, onOpenDownload = actions.onOpenDownload, onOpenDetails = actions.onOpenDownloadDetails)
             }
 
             AppScreenTab.Search -> {
