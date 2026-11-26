@@ -583,9 +583,13 @@ private fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
     val movieItems = completed.filterNot { it.isEpisode }
     fun normalizeCollectionName(value: String): String =
         value.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
-    val metadataCollections = movieItems.filter { !it.collectionName.isNullOrBlank() }
-        .groupBy { normalizeCollectionName(it.collectionName.orEmpty()) }
-        .filter { (key, group) -> key.isNotBlank() && group.size >= 2 }
+    // Prefer the stable TMDB collection ID; localized collection names are only a fallback.
+    val metadataCollections = movieItems.filter {
+        !it.collectionId.isNullOrBlank() || !it.collectionName.isNullOrBlank()
+    }.groupBy { movie ->
+        movie.collectionId?.trim()?.takeIf { it.isNotBlank() }?.let { "tmdb:$it" }
+            ?: "name:${normalizeCollectionName(movie.collectionName.orEmpty())}"
+    }.filter { (key, group) -> key != "name:" && group.size >= 2 }
     val metadataGroupedIds = metadataCollections.values.flatten().mapTo(mutableSetOf()) { it.id }
     val metadataEntries = metadataCollections.map { (key, group) ->
         val ordered = group.sortedWith(

@@ -125,6 +125,7 @@ object DownloadsRepository {
         episodeThumbnail: String?,
         stream: StreamItem,
         collectionName: String? = null,
+        collectionId: String? = null,
         collectionPoster: String? = null,
         releaseYear: Int? = null,
     ): DownloadEnqueueResult {
@@ -196,6 +197,7 @@ object DownloadsRepository {
             ),
             sourceSubtitles = stream.externalSubtitles,
             collectionName = collectionName?.trim()?.takeIf { it.isNotBlank() },
+            collectionId = collectionId?.trim()?.takeIf { it.isNotBlank() },
             collectionPoster = collectionPoster?.takeIf { it.isNotBlank() },
             releaseYear = releaseYear,
             localFileUri = null,

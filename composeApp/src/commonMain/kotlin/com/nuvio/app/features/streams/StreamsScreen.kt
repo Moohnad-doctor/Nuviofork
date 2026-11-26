@@ -311,6 +311,7 @@ fun StreamsScreen(
     val enqueueSelectedStream: (StreamItem) -> Unit = { selectedStream ->
         val collectionMeta = MetaDetailsRepository.peek(parentMetaType, parentMetaId)
         val collectionName = collectionMeta?.collectionName
+        val collectionId = collectionMeta?.collectionId
         val collectionPoster = collectionMeta?.collectionItems?.firstOrNull()?.poster
         val releaseYear = Regex("\\b(19|20)\\d{2}\\b").find(collectionMeta?.releaseInfo.orEmpty())?.value?.toIntOrNull()
         if (DirectDebridPlaybackResolver.shouldResolveToPlayableStream(selectedStream)) {
@@ -337,6 +338,8 @@ fun StreamsScreen(
                             episodeThumbnail = episodeThumbnail,
                             stream = resolved.stream,
                             collectionName = collectionName,
+                collectionId = collectionId,
+                            collectionId = collectionId,
                             collectionPoster = collectionPoster,
                             releaseYear = releaseYear,
                         )

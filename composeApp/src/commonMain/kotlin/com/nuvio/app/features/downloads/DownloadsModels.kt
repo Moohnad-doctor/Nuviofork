@@ -44,6 +44,7 @@ data class DownloadItem(
     val subtitleRequests: List<SubtitleAddonRequest> = emptyList(),
     val sourceSubtitles: List<StreamSubtitle> = emptyList(),
     val collectionName: String? = null,
+    val collectionId: String? = null,
     val collectionPoster: String? = null,
     val releaseYear: Int? = null,
     val localFileUri: String? = null,
