@@ -36,6 +36,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Create optional local properties input
+        shell: bash
+        run: |
+          # GenerateRuntimeConfigsTask declares local.properties as an optional input,
+          # but Gradle still requires the configured path to exist when set().
+          # Empty defaults keep CI builds deterministic without exposing secrets.
+          touch local.properties
+
       - name: Verify Android host-test task
         id: host-tests
         shell: bash
