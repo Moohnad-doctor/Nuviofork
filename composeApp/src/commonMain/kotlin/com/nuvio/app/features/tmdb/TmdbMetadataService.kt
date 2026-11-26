@@ -798,6 +798,7 @@ object TmdbMetadataService {
             moreLikeThis = enrichment.moreLikeThis,
             moreLikeThisSource = MoreLikeThisSource.TMDB.takeIf { enrichment.moreLikeThis.isNotEmpty() },
             collectionName = enrichment.collectionName,
+            collectionId = enrichment.collectionId,
             collectionItems = enrichment.collectionItems,
             trailers = enrichment.trailers,
         )
@@ -916,6 +917,7 @@ object TmdbMetadataService {
         if (enrichment != null && settings.useCollections) {
             updated = updated.copy(
                 collectionName = enrichment.collectionName,
+                collectionId = enrichment.collectionId,
                 collectionItems = enrichment.collectionItems,
             )
         }
@@ -1072,6 +1074,7 @@ object TmdbMetadataService {
             productionCompanies = details.productionCompanies.mapNotNull { it.toMetaCompany() },
             networks = details.networks.mapNotNull { it.toMetaCompany() },
             collectionName = details.belongsToCollection?.name?.trim()?.takeIf(String::isNotBlank),
+            collectionId = details.belongsToCollection?.id?.toString(),
             collectionItems = if (settings.useCollections && details.belongsToCollection?.id != null) {
                 fetchCollection(
                     collectionId = details.belongsToCollection.id,
@@ -1438,6 +1441,7 @@ internal data class TmdbEnrichment(
     val productionCompanies: List<MetaCompany>,
     val networks: List<MetaCompany>,
     val collectionName: String? = null,
+    val collectionId: String? = null,
     val collectionItems: List<MetaPreview> = emptyList(),
     val moreLikeThis: List<MetaPreview> = emptyList(),
     val trailers: List<MetaTrailer> = emptyList(),
