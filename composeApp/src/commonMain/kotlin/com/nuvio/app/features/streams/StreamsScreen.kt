@@ -412,7 +412,7 @@ fun StreamsScreen(
                         it.substringBefore('?').endsWith(".torrent", ignoreCase = true)
                     }
                     ?: stream.p2pInfoHash?.let { "magnet:?xt=urn:btih:$it" }
-                if (stream.isTorrentStream && torrentUrl != null) {
+                if (torrentUrl != null) {
                     if (!DownloadsPlatformDownloader.openExternalUrl(torrentUrl)) {
                         NuvioToastController.show("لم يتم العثور على تطبيق لفتح رابط التورنت")
                     }
@@ -438,13 +438,13 @@ fun StreamsScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf(1080, 720, 480).forEach { quality ->
                             TextButton(onClick = {
-                                val selected = selectDownloadQualityStream(uiState.allStreams, requestedStream, quality)
+                                val selected = selectDownloadQualityStream(uiState.groups.flatMap { it.streams }, requestedStream, quality)
                                 pendingDownloadStream = null
                                 if (selected != null) enqueueSelectedStream(selected) else NuvioToastController.show(noDirectStreamLinkText)
                             }) { Text("${quality}p") }
                         }
                         TextButton(onClick = {
-                            val selected = selectDownloadQualityStream(uiState.allStreams, requestedStream, null)
+                            val selected = selectDownloadQualityStream(uiState.groups.flatMap { it.streams }, requestedStream, null)
                             pendingDownloadStream = null
                             if (selected != null) enqueueSelectedStream(selected) else NuvioToastController.show(noDirectStreamLinkText)
                         }) { Text("أعلى جودة متاحة") }

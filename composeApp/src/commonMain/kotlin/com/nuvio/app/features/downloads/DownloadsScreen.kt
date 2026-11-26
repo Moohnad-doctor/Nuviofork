@@ -528,13 +528,13 @@ private sealed interface DownloadedEntry {
 private data class ParsedMoviePart(val title: String, val normalized: String, val part: Int)
 
 private fun parseMoviePart(title: String): ParsedMoviePart? {
-    val match = Regex("^(.*?)(?:\\s*[:\\-–]?\\s*(?:part|chapter|volume|vol\\.?)\\s*(\\d{1,2}|[ivxlcdm]+)|\\s+(\\d{1,2}))$", RegexOption.IGNORE_CASE)
+    val match = Regex("^(.*?)(?:\\s*[:\\-–]?\\s*(?:part|chapter|volume|vol\\.?|الجزء|جزء)\\s*(\\d{1,2}|[ivxlcdm]+)|\\s+(\\d{1,2}))$", RegexOption.IGNORE_CASE)
         .find(title.trim()) ?: return null
     val baseTitle = match.groupValues[1].trim().trimEnd(':', '-', '–')
     if (baseTitle.length < 2) return null
     val partText = match.groupValues[2].ifBlank { match.groupValues[3] }
     val part = partText.toIntOrNull() ?: romanPartNumber(partText) ?: return null
-    val normalized = baseTitle.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+    val normalized = baseTitle.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
     if (normalized.isBlank()) return null
     return ParsedMoviePart(baseTitle, normalized, part)
 }
@@ -582,7 +582,7 @@ private fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
         }
     val movieItems = completed.filterNot { it.isEpisode }
     fun normalizeCollectionName(value: String): String =
-        value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+        value.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
     val metadataCollections = movieItems.filter { !it.collectionName.isNullOrBlank() }
         .groupBy { normalizeCollectionName(it.collectionName.orEmpty()) }
         .filter { (key, group) -> key.isNotBlank() && group.size >= 2 }
