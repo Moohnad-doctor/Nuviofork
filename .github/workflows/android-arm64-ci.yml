@@ -1,0 +1,79 @@
+name: Android arm64 APK CI
+
+on:
+  push:
+    branches:
+      - cmp-rewrite
+      - "feat/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - cmp-rewrite
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-arm64-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-arm64:
+    name: Build and test arm64-v8a
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify Android host-test task
+        id: host-tests
+        shell: bash
+        run: |
+          ./gradlew :composeApp:tasks --all --console=plain > "${RUNNER_TEMP}/compose-tasks.txt"
+          if grep -Eq '(^|[[:space:]])testAndroidHostTest([[:space:]]|$)' "${RUNNER_TEMP}/compose-tasks.txt"; then
+            echo "task=:composeApp:testAndroidHostTest" >> "${GITHUB_OUTPUT}"
+          elif grep -Eq '(^|[[:space:]])androidHostTest([[:space:]]|$)' "${RUNNER_TEMP}/compose-tasks.txt"; then
+            echo "task=:composeApp:androidHostTest" >> "${GITHUB_OUTPUT}"
+          else
+            echo "No Android host-test task was registered by this Gradle configuration." >&2
+            exit 1
+          fi
+
+      - name: Run Android download and navigation host tests
+        run: ./gradlew "${{ steps.host-tests.outputs.task }}" --stacktrace
+
+      - name: Build Full debug APK for arm64-v8a
+        run: ./gradlew :androidApp:assembleFullDebug -Pnuvio.android.abiFilters=arm64-v8a --stacktrace
+
+      - name: Verify APK ABI
+        shell: bash
+        run: |
+          apk="$(find androidApp/build/outputs/apk/full/debug -type f -name '*.apk' | head -n 1)"
+          test -n "${apk}" || { echo "APK was not produced" >&2; exit 1; }
+          mkdir -p "${RUNNER_TEMP}/apk-check"
+          unzip -q "${apk}" -d "${RUNNER_TEMP}/apk-check"
+          test -f "${RUNNER_TEMP}/apk-check/lib/arm64-v8a/libc++_shared.so" || {
+            echo "APK does not contain arm64-v8a native libraries" >&2
+            exit 1
+          }
+          echo "Verified arm64-v8a APK: ${apk}"
+          echo "APK_PATH=${apk}" >> "${GITHUB_ENV}"
+
+      - name: Upload arm64-v8a APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuvio-full-debug-arm64-v8a
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+          retention-days: 14

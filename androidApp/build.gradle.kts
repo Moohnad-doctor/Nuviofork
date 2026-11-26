@@ -46,6 +46,7 @@ val releaseAppVersionCode = readXcconfigValue(appVersionConfigFile, "CURRENT_PRO
     ?.toIntOrNull()
     ?: error("CURRENT_PROJECT_VERSION is missing or invalid in ${appVersionConfigFile.path}")
 val requestedTaskNames = gradle.startParameter.taskNames.map { it.substringAfterLast(':') }
+val requestedAndroidAbiFilters = providers.gradleProperty("nuvio.android.abiFilters").orNull
 val buildsReleaseApks = requestedTaskNames.any {
     it.startsWith("assemble", ignoreCase = true) && it.endsWith("Release", ignoreCase = true)
 }
@@ -70,6 +71,9 @@ android {
         applicationId = "com.nuvio.app"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
+        requestedAndroidAbiFilters?.split(",")?.map(String::trim)?.filter(String::isNotEmpty)?.forEach { abi ->
+            ndk.abiFilters += abi
+        }
         versionCode = releaseAppVersionCode
         versionName = releaseAppVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
