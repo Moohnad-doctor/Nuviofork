@@ -34,9 +34,11 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.SearchOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -164,6 +166,7 @@ fun StreamsScreen(
     val streamLinkCopiedText = stringResource(Res.string.streams_link_copied)
     val noDirectStreamLinkText = stringResource(Res.string.streams_no_direct_link)
     var streamActionsTarget by remember(videoId) { mutableStateOf<StreamItem?>(null) }
+    var pendingDownloadStream by remember(videoId) { mutableStateOf<StreamItem?>(null) }
     val downloadScope = rememberCoroutineScope()
     var preferredFilterApplied by remember(videoId) { mutableStateOf(false) }
     val episodeProgress = watchProgressUiState.progressForVideo(
@@ -303,6 +306,62 @@ fun StreamsScreen(
         }
 
 
+    val enqueueSelectedStream: (StreamItem) -> Unit = { selectedStream ->
+        >
+                        if (DirectDebridPlaybackResolver.shouldResolveToPlayableStream(selectedStream)) {
+                            downloadScope.launch {
+                                val resolved = DirectDebridPlaybackResolver.resolveToPlayableStream(
+                                    selectedStream = selectedStream,
+                                    season = seasonNumber,
+                                    episode = episodeNumber,
+                                )
+                                when (resolved) {
+                                    is DirectDebridPlayableResult.Success -> {
+                                        val result = DownloadsRepository.enqueueFromStream(
+                                            contentType = type,
+                                            videoId = videoId,
+                                            parentMetaId = parentMetaId,
+                                            parentMetaType = parentMetaType,
+                                            title = title,
+                                            logo = logo,
+                                            poster = poster,
+                                            background = background,
+                                            seasonNumber = seasonNumber,
+                                            episodeNumber = episodeNumber,
+                                            episodeTitle = episodeTitle,
+                                            episodeThumbnail = episodeThumbnail,
+                                            selectedStream = resolved.selectedStream,
+                                        )
+                                        NuvioToastController.show(result.toastMessage())
+                                    }
+                                    else -> {
+                                        val message = resolved.toastMessage()
+                                        if (message != null) {
+                                            NuvioToastController.show(message)
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            val result = DownloadsRepository.enqueueFromStream(
+                                contentType = type,
+                                videoId = videoId,
+                                parentMetaId = parentMetaId,
+                                parentMetaType = parentMetaType,
+                                title = title,
+                                logo = logo,
+                                poster = poster,
+                                background = background,
+                                seasonNumber = seasonNumber,
+                                episodeNumber = episodeNumber,
+                                episodeTitle = episodeTitle,
+                                episodeThumbnail = episodeThumbnail,
+                                selectedStream = selectedStream,
+                            )
+                            NuvioToastController.show(result.toastMessage())
+                        }
+    }
+
         StreamActionsSheet(
             stream = streamActionsTarget,
             externalPlayerEnabled = playerSettings.externalPlayerEnabled,
@@ -341,60 +400,7 @@ fun StreamsScreen(
                     NuvioToastController.show(noDirectStreamLinkText)
                 }
             },
-            onDownload = { stream ->
-                if (DirectDebridPlaybackResolver.shouldResolveToPlayableStream(stream)) {
-                    downloadScope.launch {
-                        val resolved = DirectDebridPlaybackResolver.resolveToPlayableStream(
-                            stream = stream,
-                            season = seasonNumber,
-                            episode = episodeNumber,
-                        )
-                        when (resolved) {
-                            is DirectDebridPlayableResult.Success -> {
-                                val result = DownloadsRepository.enqueueFromStream(
-                                    contentType = type,
-                                    videoId = videoId,
-                                    parentMetaId = parentMetaId,
-                                    parentMetaType = parentMetaType,
-                                    title = title,
-                                    logo = logo,
-                                    poster = poster,
-                                    background = background,
-                                    seasonNumber = seasonNumber,
-                                    episodeNumber = episodeNumber,
-                                    episodeTitle = episodeTitle,
-                                    episodeThumbnail = episodeThumbnail,
-                                    stream = resolved.stream,
-                                )
-                                NuvioToastController.show(result.toastMessage())
-                            }
-                            else -> {
-                                val message = resolved.toastMessage()
-                                if (message != null) {
-                                    NuvioToastController.show(message)
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    val result = DownloadsRepository.enqueueFromStream(
-                        contentType = type,
-                        videoId = videoId,
-                        parentMetaId = parentMetaId,
-                        parentMetaType = parentMetaType,
-                        title = title,
-                        logo = logo,
-                        poster = poster,
-                        background = background,
-                        seasonNumber = seasonNumber,
-                        episodeNumber = episodeNumber,
-                        episodeTitle = episodeTitle,
-                        episodeThumbnail = episodeThumbnail,
-                        stream = stream,
-                    )
-                    NuvioToastController.show(result.toastMessage())
-                }
-            },
+            onDownload = { stream -> pendingDownloadStream = stream },
             onOpen = { stream, openExternally ->
                 onStreamActionOpen(
                     stream,
@@ -404,7 +410,53 @@ fun StreamsScreen(
                 )
             },
         )
+
+        pendingDownloadStream?.let { requestedStream ->
+            AlertDialog(
+                onDismissRequest = { pendingDownloadStream = null },
+                title = { Text("اختيار الجودة") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(1080, 720, 480).forEach { quality ->
+                            TextButton(onClick = {
+                                val selected = selectDownloadQualityStream(uiState.allStreams, requestedStream, quality)
+                                pendingDownloadStream = null
+                                if (selected != null) enqueueSelectedStream(selected) else NuvioToastController.show(noDirectStreamLinkText)
+                            }) { Text("${quality}p") }
+                        }
+                        TextButton(onClick = {
+                            val selected = selectDownloadQualityStream(uiState.allStreams, requestedStream, null)
+                            pendingDownloadStream = null
+                            if (selected != null) enqueueSelectedStream(selected) else NuvioToastController.show(noDirectStreamLinkText)
+                        }) { Text("أعلى جودة متاحة") }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { pendingDownloadStream = null }) { Text("إلغاء") } },
+            )
+        }
     }
+}
+
+private fun selectDownloadQualityStream(
+    candidates: List<StreamItem>,
+    requested: StreamItem,
+    preferredQuality: Int?,
+): StreamItem? {
+    val direct = candidates.filter { !it.playableDirectUrl.isNullOrBlank() }
+    if (direct.isEmpty()) return requested.takeIf { !it.playableDirectUrl.isNullOrBlank() }
+    val scored = direct.mapNotNull { candidate -> candidate.downloadResolution()?.let { candidate to it } }
+    if (preferredQuality == null) return scored.maxByOrNull { it.second }?.first ?: direct.firstOrNull()
+    return scored.firstOrNull { it.second == preferredQuality }?.first
+        ?: scored.minByOrNull { kotlin.math.abs(it.second - preferredQuality) }?.first
+        ?: requested.takeIf { !it.playableDirectUrl.isNullOrBlank() }
+        ?: direct.firstOrNull()
+}
+
+private fun StreamItem.downloadResolution(): Int? {
+    val metadata = listOfNotNull(streamLabel, streamSubtitle, behaviorHints.filename,
+        clientResolve?.stream?.raw?.parsed?.resolution, clientResolve?.stream?.raw?.parsed?.quality).joinToString(" ")
+    return Regex("(2160|1440|1080|720|576|480|360)\\s*p", RegexOption.IGNORE_CASE)
+        .find(metadata)?.groupValues?.get(1)?.toIntOrNull()
 }
 
 @Composable
