@@ -91,6 +91,8 @@ fun DownloadsScreen(
     }
 
     var selectedShowId by rememberSaveable(initialShowId) { mutableStateOf(initialShowId) }
+    var selectedCollectionKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCollectionTitle by rememberSaveable { mutableStateOf<String?>(null) }
     var actionsItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteItemId by rememberSaveable { mutableStateOf<String?>(null) }
     val speeds = rememberDownloadSpeeds(uiState.items)
@@ -105,23 +107,28 @@ fun DownloadsScreen(
     }
     val onOpenActions: (DownloadItem) -> Unit = { actionsItemId = it.id }
 
-    PlatformBackHandler(enabled = selectedShowId != null && onBackFromShow == null) {
+    PlatformBackHandler(enabled = (selectedShowId != null || selectedCollectionKey != null) && onBackFromShow == null) {
         selectedShowId = null
+        selectedCollectionKey = null
+        selectedCollectionTitle = null
     }
 
     NuvioScreen {
         stickyHeader {
             NuvioScreenHeader(
-                title = if (selectedShowId == null) {
-                    stringResource(Res.string.compose_settings_root_downloads_title)
-                } else {
-                    selectedShowTitle ?: stringResource(Res.string.downloads_show_downloads)
+                title = when {
+                    selectedCollectionKey != null -> selectedCollectionTitle ?: stringResource(Res.string.compose_settings_root_downloads_title)
+                    selectedShowId != null -> selectedShowTitle ?: stringResource(Res.string.downloads_show_downloads)
+                    else -> stringResource(Res.string.compose_settings_root_downloads_title)
                 },
                 onBack = {
-                    if (selectedShowId != null) {
-                        onBackFromShow?.invoke() ?: run { selectedShowId = null }
-                    } else {
-                        onBack()
+                    when {
+                        selectedCollectionKey != null -> {
+                            selectedCollectionKey = null
+                            selectedCollectionTitle = null
+                        }
+                        selectedShowId != null -> onBackFromShow?.invoke() ?: run { selectedShowId = null }
+                        else -> onBack()
                     }
                 },
                 actions = {
@@ -142,8 +149,20 @@ fun DownloadsScreen(
         }
 
         val showId = selectedShowId
-        if (showId == null) {
-            downloadsRootContent(
+        val collectionKey = selectedCollectionKey
+        when {
+            collectionKey != null -> {
+                val collection = uiState.items.downloadedEntries()
+                    .filterIsInstance<DownloadedEntry.Collection>()
+                    .firstOrNull { it.key == collectionKey }
+                downloadsCollectionContent(
+                    movies = collection?.movies.orEmpty(),
+                    watchStatusOf = watchStatusOf,
+                    onPlay = onOpenDownload,
+                    onOpenActions = onOpenActions,
+                )
+            }
+            showId == null -> downloadsRootContent(
                 items = uiState.items,
                 speeds = speeds,
                 watchStatusOf = watchStatusOf,
@@ -151,13 +170,14 @@ fun DownloadsScreen(
                 onOpenShow = { item ->
                     onNavigateToShow?.invoke(item.parentMetaId, item.title) ?: run { selectedShowId = item.parentMetaId }
                 },
+                onOpenCollection = { key, title ->
+                    selectedCollectionKey = key
+                    selectedCollectionTitle = title
+                },
                 onOpenActions = onOpenActions,
             )
-        } else {
-            downloadsShowContent(
-                episodes = uiState.items
-                    .filter { it.isEpisode && it.parentMetaId == showId }
-                    .sortedForSeriesDownloads(),
+            else -> downloadsShowContent(
+                episodes = uiState.items.filter { it.isEpisode && it.parentMetaId == showId }.sortedForSeriesDownloads(),
                 speeds = speeds,
                 watchStatusOf = watchStatusOf,
                 onPlay = onOpenDownload,
@@ -196,6 +216,7 @@ private fun LazyListScope.downloadsRootContent(
     watchStatusOf: (DownloadItem) -> DownloadWatchStatus,
     onPlay: (DownloadItem) -> Unit,
     onOpenShow: (DownloadItem) -> Unit,
+    onOpenCollection: (key: String, title: String) -> Unit,
     onOpenActions: (DownloadItem) -> Unit,
 ) {
     if (items.isEmpty()) {
@@ -272,8 +293,37 @@ private fun LazyListScope.downloadsRootContent(
                     downloadingCount = entry.downloadingCount,
                     onOpen = { onOpenShow(entry.episodes.first()) },
                 )
+                is DownloadedEntry.Collection -> DownloadedCollectionRow(
+                    cover = entry.movies.first(),
+                    title = entry.title,
+                    movieCount = entry.movies.size,
+                    sizeBytes = entry.movies.sumOf { it.sizeOnDiskBytes },
+                    onOpen = { onOpenCollection(entry.key, entry.title) },
+                )
             }
         }
+    }
+}
+
+private fun LazyListScope.downloadsCollectionContent(
+    movies: List<DownloadItem>,
+    watchStatusOf: (DownloadItem) -> DownloadWatchStatus,
+    onPlay: (DownloadItem) -> Unit,
+    onOpenActions: (DownloadItem) -> Unit,
+) {
+    item(key = "collection_summary") {
+        SummaryText(listOf(
+            pluralStringResource(Res.plurals.downloads_titles, movies.size, movies.size),
+            formatBytes(movies.sumOf { it.sizeOnDiskBytes }),
+        ))
+    }
+    items(items = movies, key = { it.id }) { movie ->
+        DownloadedMovieRow(
+            item = movie,
+            watchStatus = watchStatusOf(movie),
+            onPlay = { onPlay(movie) },
+            onOpenActions = { onOpenActions(movie) },
+        )
     }
 }
 
@@ -461,18 +511,53 @@ private sealed interface DownloadedEntry {
         override val key: String get() = "show:${episodes.first().parentMetaId}"
         override val addedAtEpochMs: Long get() = episodes.maxOf { it.createdAtEpochMs }
     }
+
+    data class Collection(
+        val title: String,
+        val movies: List<DownloadItem>,
+        val normalizedName: String,
+    ) : DownloadedEntry {
+        override val key: String get() = "collection:$normalizedName"
+        override val addedAtEpochMs: Long get() = movies.maxOf { it.createdAtEpochMs }
+    }
 }
+
+private data class ParsedMoviePart(val title: String, val normalized: String, val part: Int)
+
+private fun parseMoviePart(title: String): ParsedMoviePart? {
+    val match = Regex("^(.*?)(?:\\s*[:\\-–]?\\s*(?:part|chapter|volume|vol\\.?)\\s*(\\d{1,2}|[ivxlcdm]+)|\\s+(\\d{1,2}))$", RegexOption.IGNORE_CASE)
+        .find(title.trim()) ?: return null
+    val baseTitle = match.groupValues[1].trim().trimEnd(':', '-', '–')
+    if (baseTitle.length < 2) return null
+    val partText = match.groupValues[2].ifBlank { match.groupValues[3] }
+    val part = partText.toIntOrNull() ?: romanPartNumber(partText) ?: return null
+    val normalized = baseTitle.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+    if (normalized.isBlank()) return null
+    return ParsedMoviePart(baseTitle, normalized, part)
+}
+
+private fun romanPartNumber(value: String): Int? {
+    val digits = mapOf('i' to 1, 'v' to 5, 'x' to 10, 'l' to 50, 'c' to 100, 'd' to 500, 'm' to 1000)
+    val normalized = value.lowercase()
+    if (normalized.isBlank() || normalized.any { it !in digits }) return null
+    var total = 0
+    for (index in normalized.indices) {
+        val current = digits.getValue(normalized[index])
+        val next = normalized.getOrNull(index + 1)?.let(digits::getValue) ?: 0
+        total += if (current < next) -current else current
+    }
+    return total
+}
+
+private fun movieReleaseYear(title: String): Int? =
+    Regex("\\b(19|20)\\d{2}\\b").find(title)?.value?.toIntOrNull()
 
 private fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
     val completed = filter { it.status == DownloadStatus.Completed }
     val downloadingByShow = filter { it.isEpisode && it.status != DownloadStatus.Completed }
         .groupingBy { it.parentMetaId }
         .eachCount()
-    val movies = completed
-        .filterNot { it.isEpisode }
-        .map { DownloadedEntry.Movie(it) }
-    val shows = completed
-        .filter { it.isEpisode }
+    val shows = completed.filter { it.isEpisode }
         .groupBy { it.parentMetaId }
         .map { (showId, episodes) ->
             DownloadedEntry.Show(
@@ -480,7 +565,21 @@ private fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
                 downloadingCount = downloadingByShow[showId] ?: 0,
             )
         }
-    return (movies + shows).sortedByDescending { it.addedAtEpochMs }
+    val movieItems = completed.filterNot { it.isEpisode }
+    val partGroups = movieItems.mapNotNull { movie ->
+        parseMoviePart(movie.title)?.let { it.normalized to (movie to it) }
+    }.groupBy({ it.first }, { it.second })
+    val collections = partGroups.filterValues { it.size >= 2 }.map { (key, parts) ->
+        val ordered = parts.sortedWith(
+            compareBy<Pair<DownloadItem, ParsedMoviePart>> { movieReleaseYear(it.first.title) ?: Int.MAX_VALUE }
+                .thenBy { it.second.part }
+                .thenBy { it.first.title.lowercase() },
+        ).map { it.first }
+        DownloadedEntry.Collection(parts.first().second.title, ordered, key)
+    }
+    val groupedIds = collections.flatMap { it.movies }.mapTo(mutableSetOf()) { it.id }
+    val movies = movieItems.filterNot { it.id in groupedIds }.map { DownloadedEntry.Movie(it) }
+    return (movies + shows + collections).sortedByDescending { it.addedAtEpochMs }
 }
 
 private fun DownloadItem.toggleTransfer() {

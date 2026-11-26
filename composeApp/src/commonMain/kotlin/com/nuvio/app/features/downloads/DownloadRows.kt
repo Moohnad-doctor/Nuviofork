@@ -115,6 +115,36 @@ internal fun DownloadedMovieRow(
 }
 
 @Composable
+internal fun DownloadedCollectionRow(
+    cover: DownloadItem,
+    title: String,
+    movieCount: Int,
+    sizeBytes: Long,
+    onOpen: () -> Unit,
+) {
+    val tokens = MaterialTheme.nuvio
+    DownloadRow(
+        artwork = { DownloadPoster(item = cover) },
+        title = title,
+        subtitle = listOf(
+            stringResource(Res.string.media_movie),
+            pluralStringResource(Res.plurals.downloads_titles, movieCount, movieCount),
+            formatBytes(sizeBytes),
+        ).joinToString(DownloadTextSeparator),
+        onClick = onOpen,
+        onLongClick = null,
+        trailing = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = tokens.colors.textMuted,
+                modifier = Modifier.padding(horizontal = NuvioTokens.Space.s12),
+            )
+        },
+    )
+}
+
+@Composable
 internal fun DownloadedShowRow(
     cover: DownloadItem,
     episodeCount: Int,
