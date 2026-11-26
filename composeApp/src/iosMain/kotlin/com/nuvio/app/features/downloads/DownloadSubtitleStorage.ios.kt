@@ -11,7 +11,9 @@ import platform.Foundation.writeToFile
 
 @OptIn(ExperimentalForeignApi::class)
 internal actual class DownloadSubtitleStorage actual constructor(localVideoUri: String) {
-    private val directory = requireNotNull(NSURL(string = localVideoUri).path) + ".subtitles"
+    private val videoPath = requireNotNull(NSURL(string = localVideoUri).path)
+    private val directory = videoPath + ".subtitles"
+    private val arabicSidecarPath = videoPath + ".ar.srt"
 
     actual fun read(fileName: String): String? =
         NSString.stringWithContentsOfFile(path(fileName), NSUTF8StringEncoding, null)
@@ -27,10 +29,11 @@ internal actual class DownloadSubtitleStorage actual constructor(localVideoUri: 
 
     actual fun remove() {
         NSFileManager.defaultManager.removeItemAtPath(directory, null)
+        NSFileManager.defaultManager.removeItemAtPath(arabicSidecarPath, null)
     }
 
     private fun path(fileName: String): String {
         require(fileName.isNotBlank() && '/' !in fileName && fileName != "." && fileName != "..")
-        return "$directory/$fileName"
+        return if (fileName == "arabic.ar.srt") arabicSidecarPath else "$directory/$fileName"
     }
 }
