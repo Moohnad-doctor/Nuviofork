@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -150,6 +151,7 @@ internal fun DownloadedShowRow(
     episodeCount: Int,
     sizeBytes: Long,
     downloadingCount: Int,
+    combinedProgress: Float,
     onOpen: () -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -169,6 +171,12 @@ internal fun DownloadedShowRow(
             if (downloadingCount > 0) {
                 StatusText(text = stringResource(Res.string.downloads_downloading_count, downloadingCount))
             }
+            LinearProgressIndicator(
+                progress = { combinedProgress },
+                modifier = Modifier.fillMaxWidth(),
+                color = tokens.colors.accent,
+                trackColor = tokens.colors.surfaceElevated,
+            )
         },
         trailing = {
             Icon(

@@ -291,6 +291,7 @@ private fun LazyListScope.downloadsRootContent(
                     episodeCount = entry.episodes.size,
                     sizeBytes = entry.episodes.sumOf { it.sizeOnDiskBytes },
                     downloadingCount = entry.downloadingCount,
+                    combinedProgress = entry.combinedProgress,
                     onOpen = { onOpenShow(entry.episodes.first()) },
                 )
                 is DownloadedEntry.Collection -> DownloadedCollectionRow(
@@ -507,6 +508,7 @@ private sealed interface DownloadedEntry {
     data class Show(
         val episodes: List<DownloadItem>,
         val downloadingCount: Int,
+        val combinedProgress: Float,
     ) : DownloadedEntry {
         override val key: String get() = "show:${episodes.first().parentMetaId}"
         override val addedAtEpochMs: Long get() = episodes.maxOf { it.createdAtEpochMs }
@@ -561,9 +563,21 @@ private fun List<DownloadItem>.downloadedEntries(): List<DownloadedEntry> {
     val shows = completed.filter { it.isEpisode }
         .groupBy { it.parentMetaId }
         .map { (showId, episodes) ->
+            val allEpisodes = filter { it.isEpisode && it.parentMetaId == showId }
+            val totalBytes = allEpisodes.sumOf { it.totalBytes ?: it.sizeOnDiskBytes }
+            val downloadedBytes = allEpisodes.sumOf {
+                if (it.status == DownloadStatus.Completed) it.sizeOnDiskBytes else it.downloadedBytes
+            }
+            val combinedProgress = if (totalBytes > 0L) {
+                (downloadedBytes.toDouble() / totalBytes.toDouble()).toFloat().coerceIn(0f, 1f)
+            } else if (allEpisodes.isNotEmpty()) {
+                allEpisodes.map { if (it.status == DownloadStatus.Completed) 1f else it.progressFraction }
+                    .average().toFloat().coerceIn(0f, 1f)
+            } else 0f
             DownloadedEntry.Show(
                 episodes = episodes.sortedForSeriesDownloads(),
                 downloadingCount = downloadingByShow[showId] ?: 0,
+                combinedProgress = combinedProgress,
             )
         }
     val movieItems = completed.filterNot { it.isEpisode }
