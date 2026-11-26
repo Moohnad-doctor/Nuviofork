@@ -174,8 +174,8 @@ internal fun DownloadedShowRow(
             LinearProgressIndicator(
                 progress = { combinedProgress },
                 modifier = Modifier.fillMaxWidth(),
-                color = tokens.colors.accent,
-                trackColor = tokens.colors.surfaceElevated,
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
         },
         trailing = {
