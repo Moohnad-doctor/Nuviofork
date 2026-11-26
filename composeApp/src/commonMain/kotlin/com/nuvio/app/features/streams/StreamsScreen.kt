@@ -338,7 +338,6 @@ fun StreamsScreen(
                             episodeThumbnail = episodeThumbnail,
                             stream = resolved.stream,
                             collectionName = collectionName,
-                collectionId = collectionId,
                             collectionId = collectionId,
                             collectionPoster = collectionPoster,
                             releaseYear = releaseYear,
@@ -364,6 +363,7 @@ fun StreamsScreen(
                 episodeThumbnail = episodeThumbnail,
                 stream = selectedStream,
                 collectionName = collectionName,
+                collectionId = collectionId,
                 collectionPoster = collectionPoster,
                 releaseYear = releaseYear,
             )
