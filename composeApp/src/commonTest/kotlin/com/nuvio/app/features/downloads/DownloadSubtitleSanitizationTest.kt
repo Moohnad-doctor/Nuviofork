@@ -14,7 +14,7 @@ class DownloadSubtitleSanitizationTest {
 
     @Test
     fun repairsUtf8ArabicDecodedAsLatin1() {
-        assertEquals("مرحبا", sanitizeDownloadedSubtitle("Ù\u2026Ø\u00b1Ø\u00adØ\u00a8Ø\u00a7"))
+        assertEquals("مرحبا", sanitizeDownloadedSubtitle("\u00D9\u2026\u00D8\u00B1\u00D8\u00AD\u00D8\u00A8\u00D8\u00A7"))
     }
 
     @Test

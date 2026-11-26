@@ -113,8 +113,19 @@ private fun arabicSubtitleRank(language: String, name: String?): Int = when (lan
 internal fun sanitizeDownloadedSubtitle(input: String): String {
     val withoutBom = input.removePrefix("\uFEFF")
     val looksLikeUtf8DecodedAsLatin1 = withoutBom.count { it == 'Ã' || it == 'Ø' || it == 'Ù' || it == 'Â' } >= 2
-    if (!looksLikeUtf8DecodedAsLatin1 || withoutBom.any { it.code > 0xFF }) return withoutBom
-    val repaired = ByteArray(withoutBom.length) { index -> withoutBom[index].code.toByte() }.decodeToString()
+    if (!looksLikeUtf8DecodedAsLatin1) return withoutBom
+    val cp1252 = "\u20AC\u0081\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u008D\u017D\u008F\u0090\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u009D\u017E\u0178"
+    val bytes = ByteArray(withoutBom.length)
+    for (index in withoutBom.indices) {
+        val code = withoutBom[index].code
+        val byteValue = when {
+            code <= 0xFF -> code
+            cp1252.indexOf(withoutBom[index]) >= 0 -> 0x80 + cp1252.indexOf(withoutBom[index])
+            else -> return withoutBom
+        }
+        bytes[index] = byteValue.toByte()
+    }
+    val repaired = bytes.decodeToString()
     val originalArabic = withoutBom.count { it in '\u0600'..'\u06FF' }
     val repairedArabic = repaired.count { it in '\u0600'..'\u06FF' }
     return (if (repairedArabic > originalArabic) repaired else withoutBom).removePrefix("\uFEFF")
