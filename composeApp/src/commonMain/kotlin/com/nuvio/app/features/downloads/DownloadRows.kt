@@ -43,6 +43,7 @@ import nuvio.composeapp.generated.resources.compose_action_pause
 import nuvio.composeapp.generated.resources.details_actions_menu_label
 import nuvio.composeapp.generated.resources.downloads_downloading_count
 import nuvio.composeapp.generated.resources.downloads_episodes
+import nuvio.composeapp.generated.resources.downloads_titles
 import nuvio.composeapp.generated.resources.downloads_speed
 import nuvio.composeapp.generated.resources.downloads_status_downloading
 import nuvio.composeapp.generated.resources.downloads_status_failed
