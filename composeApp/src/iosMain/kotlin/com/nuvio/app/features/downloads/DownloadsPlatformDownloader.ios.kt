@@ -189,6 +189,16 @@ internal actual object DownloadsPlatformDownloader {
         }
     }
 
+    actual fun openExternalUrl(url: String): Boolean {
+        val nativeUrl = NSURL(string = url.trim()) ?: return false
+        UIApplication.sharedApplication.openURL(
+            url = nativeUrl,
+            options = emptyMap<Any?, Any>(),
+            completionHandler = null,
+        )
+        return true
+    }
+
     actual fun openDownloadsDirectory(): Boolean {
         val url = NSURL.fileURLWithPath(downloadsDirectoryPath())
         UIApplication.sharedApplication.openURL(

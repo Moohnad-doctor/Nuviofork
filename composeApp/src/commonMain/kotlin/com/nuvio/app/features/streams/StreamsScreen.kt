@@ -74,6 +74,7 @@ import com.nuvio.app.core.ui.dismissNuvioBottomSheet
 import com.nuvio.app.core.ui.featherArtwork
 import com.nuvio.app.core.ui.rememberArtworkBackdrop
 import com.nuvio.app.features.downloads.DownloadsRepository
+import com.nuvio.app.features.downloads.DownloadsPlatformDownloader
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -394,7 +395,20 @@ fun StreamsScreen(
                     NuvioToastController.show(noDirectStreamLinkText)
                 }
             },
-            onDownload = { stream -> pendingDownloadStream = stream },
+            onDownload = { stream ->
+                val torrentUrl = stream.torrentMagnetUri
+                    ?: listOfNotNull(stream.url, stream.externalUrl).firstOrNull {
+                        it.substringBefore('?').endsWith(".torrent", ignoreCase = true)
+                    }
+                    ?: stream.p2pInfoHash?.let { "magnet:?xt=urn:btih:$it" }
+                if (stream.isTorrentStream && torrentUrl != null) {
+                    if (!DownloadsPlatformDownloader.openExternalUrl(torrentUrl)) {
+                        NuvioToastController.show("لم يتم العثور على تطبيق لفتح رابط التورنت")
+                    }
+                } else {
+                    pendingDownloadStream = stream
+                }
+            },
             onOpen = { stream, openExternally ->
                 onStreamActionOpen(
                     stream,

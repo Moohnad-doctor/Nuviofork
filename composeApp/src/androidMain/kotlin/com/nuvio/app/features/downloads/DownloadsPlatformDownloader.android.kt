@@ -2,6 +2,7 @@ package com.nuvio.app.features.downloads
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,6 +98,17 @@ internal actual object DownloadsPlatformDownloader {
         val downloadsDir = File(context.filesDir, "downloads")
         val localFile = File(downloadsDir, fileName)
         return localFile.takeIf { it.exists() }?.toURI()?.toString()
+    }
+
+    actual fun openExternalUrl(url: String): Boolean {
+        val context = appContext ?: return false
+        val value = url.trim().takeIf { it.isNotBlank() } ?: return false
+        return runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(value)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            true
+        }.getOrDefault(false)
     }
 
     actual fun openDownloadsDirectory(): Boolean {
