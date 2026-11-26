@@ -317,9 +317,6 @@ fun StreamsScreen(
             downloadScope.launch {
                 val resolved = DirectDebridPlaybackResolver.resolveToPlayableStream(
                     stream = selectedStream,
-                collectionName = collectionName,
-                collectionPoster = collectionPoster,
-                releaseYear = releaseYear,
                     season = seasonNumber,
                     episode = episodeNumber,
                 )
@@ -363,6 +360,9 @@ fun StreamsScreen(
                 episodeTitle = episodeTitle,
                 episodeThumbnail = episodeThumbnail,
                 stream = selectedStream,
+                collectionName = collectionName,
+                collectionPoster = collectionPoster,
+                releaseYear = releaseYear,
             )
             NuvioToastController.show(result.toastMessage())
         }
