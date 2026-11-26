@@ -29,12 +29,15 @@ internal object DownloadSubtitles {
         val addonSubtitles = loadAddonSubtitles(item.subtitleRequests).map {
             StreamSubtitle(url = it.url, language = it.language, name = it.display)
         }
-        val pending = (item.sourceSubtitles + addonSubtitles)
+        val allPending = (item.sourceSubtitles + addonSubtitles)
             .distinctBy { it.url }
             .filter { subtitle ->
                 (subtitle.url.startsWith("https://", true) || subtitle.url.startsWith("http://", true)) &&
                     saved.none { it.sourceUrl == subtitle.url }
             }
+        val arabicCandidates = allPending.filter(::isArabicDownloadSubtitle)
+        val preferredArabic = arabicCandidates.sortedBy { arabicSubtitleRank(it.language, it.name) }.take(1)
+        val pending = preferredArabic + allPending.filterNot(::isArabicDownloadSubtitle)
         for (batch in pending.chunked(4)) {
             val fetched = coroutineScope {
                 batch.map { subtitle ->
@@ -42,7 +45,8 @@ internal object DownloadSubtitles {
                         val body = try {
                             withTimeoutOrNull(15_000L) {
                                 httpGetTextWithHeaders(subtitle.url, subtitle.headers.orEmpty())
-                            }?.takeIf { it.isNotBlank() && PlayerSubtitleCueParser.parse(it, subtitle.url).isNotEmpty() }
+                            }?.let(::sanitizeDownloadedSubtitle)
+                                ?.takeIf { it.isNotBlank() && PlayerSubtitleCueParser.parse(it, subtitle.url).isNotEmpty() }
                         } catch (error: Exception) {
                             if (error is CancellationException) throw error
                             null
@@ -55,7 +59,11 @@ internal object DownloadSubtitles {
                 currentCoroutineContext().ensureActive()
                 if (body == null) continue
                 val extension = PlayerSubtitleCueParser.fileExtension(body, subtitle.url)
-                val fileName = "${nextFileIndex++}.$extension"
+                val fileName = if (isArabicDownloadSubtitle(subtitle)) {
+                    if (extension.equals("srt", true)) "arabic.ar.srt" else "arabic.ar.$extension"
+                } else {
+                    "${nextFileIndex++}.$extension"
+                }
                 try {
                     storage.write(fileName, body)
                     saved += DownloadedSubtitle(subtitle.url, fileName, subtitle.language, subtitle.name)
@@ -85,6 +93,31 @@ internal object DownloadSubtitles {
         runCatching {
             storage.read("manifest.json")?.let { json.decodeFromString<SubtitleManifest>(it) }
         }.getOrNull() ?: SubtitleManifest()
+}
+
+internal fun isArabicDownloadSubtitle(subtitle: StreamSubtitle): Boolean =
+    isArabicDownloadSubtitle(subtitle.language, subtitle.name)
+
+private fun isArabicDownloadSubtitle(language: String, name: String?): Boolean {
+    val tag = language.trim().lowercase().replace('_', '-')
+    return tag == "ar" || tag == "ara" || tag.startsWith("ar-") ||
+        name.orEmpty().any { it in '\u0600'..'\u06FF' }
+}
+
+private fun arabicSubtitleRank(language: String, name: String?): Int = when (language.trim().lowercase()) {
+    "ar" -> 0
+    "ara" -> 1
+    else -> if (name.orEmpty().any { it in '\u0600'..'\u06FF' }) 2 else 3
+}
+
+internal fun sanitizeDownloadedSubtitle(input: String): String {
+    val withoutBom = input.removePrefix("\uFEFF")
+    val looksLikeUtf8DecodedAsLatin1 = withoutBom.count { it == 'Ã' || it == 'Ø' || it == 'Ù' || it == 'Â' } >= 2
+    if (!looksLikeUtf8DecodedAsLatin1 || withoutBom.any { it.code > 0xFF }) return withoutBom
+    val repaired = ByteArray(withoutBom.length) { index -> withoutBom[index].code.toByte() }.decodeToString()
+    val originalArabic = withoutBom.count { it in '\u0600'..'\u06FF' }
+    val repairedArabic = repaired.count { it in '\u0600'..'\u06FF' }
+    return (if (repairedArabic > originalArabic) repaired else withoutBom).removePrefix("\uFEFF")
 }
 
 @Serializable
