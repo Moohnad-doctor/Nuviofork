@@ -411,7 +411,7 @@ fun StreamsScreen(
                     ?: listOfNotNull(stream.url, stream.externalUrl).firstOrNull {
                         it.substringBefore('?').endsWith(".torrent", ignoreCase = true)
                     }
-                    ?: stream.p2pInfoHash?.let { "magnet:?xt=urn:btih:$it" }
+                    ?: stream.torrentSchemeUri?.let { stream.p2pInfoHash?.let { hash -> "magnet:?xt=urn:btih:$hash" } }
                 if (torrentUrl != null) {
                     if (!DownloadsPlatformDownloader.openExternalUrl(torrentUrl)) {
                         NuvioToastController.show("لم يتم العثور على تطبيق لفتح رابط التورنت")
@@ -474,8 +474,13 @@ private fun selectDownloadQualityStream(
 private fun StreamItem.downloadResolution(): Int? {
     val metadata = listOfNotNull(streamLabel, streamSubtitle, behaviorHints.filename,
         clientResolve?.stream?.raw?.parsed?.resolution, clientResolve?.stream?.raw?.parsed?.quality).joinToString(" ")
-    return Regex("(2160|1440|1080|720|576|480|360)\\s*p", RegexOption.IGNORE_CASE)
-        .find(metadata)?.groupValues?.get(1)?.toIntOrNull()
+    Regex("(2160|1440|1080|720|576|480|360)\\s*p", RegexOption.IGNORE_CASE)
+        .find(metadata)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+    return when {
+        Regex("\\b4k\\b", RegexOption.IGNORE_CASE).containsMatchIn(metadata) -> 2160
+        Regex("\\b2k\\b", RegexOption.IGNORE_CASE).containsMatchIn(metadata) -> 1440
+        else -> null
+    }
 }
 
 @Composable
