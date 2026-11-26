@@ -24,17 +24,22 @@ internal object DownloadSubtitles {
         val storage = DownloadSubtitleStorage(localVideoUri)
         val manifest = readManifest(storage)
         val saved = manifest.tracks.filter { storage.localFileUri(it.fileName) != null }.toMutableList()
-        if (manifest.complete && saved.size == manifest.tracks.size) return@withContext
         var nextFileIndex = (saved.maxOfOrNull { it.fileName.substringBefore('.').toIntOrNull() ?: -1 } ?: -1) + 1
         val addonSubtitles = loadAddonSubtitles(item.subtitleRequests).map {
             StreamSubtitle(url = it.url, language = it.language, name = it.display)
         }
-        val allPending = (item.sourceSubtitles + addonSubtitles)
+        val allAvailable = item.sourceSubtitles + addonSubtitles
+        val allPending = allAvailable
             .distinctBy { it.url }
             .filter { subtitle ->
                 (subtitle.url.startsWith("https://", true) || subtitle.url.startsWith("http://", true)) &&
                     saved.none { it.sourceUrl == subtitle.url }
             }
+        val hasSavedArabic = saved.any { isArabicDownloadSubtitle(it.language, it.name) }
+        val hasAvailableArabic = allAvailable.any(::isArabicDownloadSubtitle)
+        if (manifest.complete && saved.size == manifest.tracks.size && (hasSavedArabic || !hasAvailableArabic)) {
+            return@withContext
+        }
         val arabicCandidates = allPending.filter(::isArabicDownloadSubtitle)
         val preferredArabic = arabicCandidates.sortedBy { arabicSubtitleRank(it.language, it.name) }.take(1)
         val pending = preferredArabic + allPending.filterNot(::isArabicDownloadSubtitle)
