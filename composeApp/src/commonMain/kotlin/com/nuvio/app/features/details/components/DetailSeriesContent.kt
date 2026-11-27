@@ -324,15 +324,15 @@ private fun SeasonDownloadBatchPanel(meta: MetaDetails, season: Int, episodes: L
                 if (result == DownloadEnqueueResult.Started || result == DownloadEnqueueResult.Replaced) queued++ else skipped++
             }
             isDownloading = false
-            NuvioToastController.show(if (skipped == 0) "تمت إضافة $queued حلقة للتنزيل" else "تمت إضافة $queued حلقة، وتعذّر تجهيز $skipped")
+            NuvioToastController.show(if (skipped == 0) getString(Res.string.downloads_batch_done, queued) else getString(Res.string.downloads_batch_partial, queued, skipped))
         }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("تحديد الحلقات", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(Res.string.downloads_batch_select_episodes), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             TextButton(enabled = !isDownloading, onClick = { selectedKeys = if (selectedKeys.size == episodeKeys.size) emptySet() else episodeKeys.toSet() }) {
-                Text(if (selectedKeys.size == episodeKeys.size) "إلغاء التحديد" else "تحديد الكل")
+                Text(stringResource(if (selectedKeys.size == episodeKeys.size) Res.string.downloads_batch_deselect_all else Res.string.downloads_batch_select_all))
             }
         }
         episodes.forEachIndexed { index, episode ->
@@ -343,14 +343,14 @@ private fun SeasonDownloadBatchPanel(meta: MetaDetails, season: Int, episodes: L
             }
         }
         Button(onClick = { showQualityPicker = true }, enabled = selectedEpisodes.isNotEmpty() && !isDownloading, modifier = Modifier.fillMaxWidth()) {
-            Text(if (isDownloading) "جارٍ إضافة الحلقات..." else "تنزيل الموسم (${selectedEpisodes.size})")
+            Text(if (isDownloading) stringResource(Res.string.downloads_batch_adding) else stringResource(Res.string.downloads_batch_start, selectedEpisodes.size))
         }
     }
     if (showQualityPicker) {
-        AlertDialog(onDismissRequest = { showQualityPicker = false }, title = { Text("اختيار الجودة") },
+        AlertDialog(onDismissRequest = { showQualityPicker = false }, title = { Text(stringResource(Res.string.downloads_quality_picker_title)) },
             text = { Column {
                 listOf(1080, 720, 480).forEach { quality -> TextButton(onClick = { showQualityPicker = false; enqueueEpisodes(quality) }) { Text("${quality}p") } }
-                TextButton(onClick = { showQualityPicker = false; enqueueEpisodes(null) }) { Text("أعلى جودة متاحة") }
+                TextButton(onClick = { showQualityPicker = false; enqueueEpisodes(null) }) { Text(stringResource(Res.string.downloads_quality_highest)) }
             } }, confirmButton = { TextButton(onClick = { showQualityPicker = false }) { Text("إلغاء") } })
     }
 }
@@ -386,6 +386,11 @@ internal fun DetailSeriesListHeader(
                     },
                 )
             }
+            SeasonDownloadBatchPanel(
+                meta = meta,
+                season = currentSeason,
+                episodes = groupedEpisodes[currentSeason].orEmpty(),
+            )
         }
     }
 }
