@@ -5,7 +5,8 @@ import java.io.File
 import java.net.URI
 
 internal actual class DownloadSubtitleStorage actual constructor(localVideoUri: String) {
-    private val directory = File(File(URI(localVideoUri)).path + ".subtitles")
+    private val videoFile = File(URI(localVideoUri))
+    private val directory = File(videoFile.path + ".subtitles")
 
     actual fun read(fileName: String): String? =
         runCatching { AtomicFile(file(fileName)).readFully().decodeToString() }.getOrNull()
@@ -28,10 +29,13 @@ internal actual class DownloadSubtitleStorage actual constructor(localVideoUri: 
 
     actual fun remove() {
         directory.deleteRecursively()
+        arabicSidecarFile().delete()
     }
 
     private fun file(fileName: String): File {
         require(fileName.isNotBlank() && File(fileName).name == fileName && fileName != "." && fileName != "..")
-        return File(directory, fileName)
+        return if (fileName == "arabic.ar.srt") arabicSidecarFile() else File(directory, fileName)
     }
+
+    private fun arabicSidecarFile(): File = File(videoFile.parentFile, videoFile.name + ".ar.srt")
 }

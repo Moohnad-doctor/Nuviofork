@@ -59,6 +59,8 @@ internal object MetaDetailsParser {
             links = links,
             seasonPosters = meta.seasonPosters(videos),
             videos = videos,
+            collectionId = meta.string("collectionId") ?: meta.string("collection_id")
+                ?: (meta["belongs_to_collection"] as? JsonObject)?.string("id"),
         )
     }
 

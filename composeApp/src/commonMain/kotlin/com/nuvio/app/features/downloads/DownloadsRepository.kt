@@ -124,6 +124,10 @@ object DownloadsRepository {
         episodeTitle: String?,
         episodeThumbnail: String?,
         stream: StreamItem,
+        collectionName: String? = null,
+        collectionId: String? = null,
+        collectionPoster: String? = null,
+        releaseYear: Int? = null,
     ): DownloadEnqueueResult {
         ensureLoaded()
 
@@ -132,7 +136,7 @@ object DownloadsRepository {
             ?.takeIf { it.isNotBlank() }
             ?: return DownloadEnqueueResult.MissingUrl
 
-        if (!sourceUrl.isSupportedDownloadUrl()) {
+        if (!DownloadsPlatformDownloader.supportsDownloadUrl(sourceUrl)) {
             return DownloadEnqueueResult.UnsupportedFormat
         }
 
@@ -192,6 +196,10 @@ object DownloadsRepository {
                 extras = SubtitleRequestExtras.from(stream.behaviorHints, sourceUrl),
             ),
             sourceSubtitles = stream.externalSubtitles,
+            collectionName = collectionName?.trim()?.takeIf { it.isNotBlank() },
+            collectionId = collectionId?.trim()?.takeIf { it.isNotBlank() },
+            collectionPoster = collectionPoster?.takeIf { it.isNotBlank() },
+            releaseYear = releaseYear,
             localFileUri = null,
             fileName = fileName,
             status = DownloadStatus.Downloading,
@@ -570,18 +578,12 @@ private fun String.fileExtensionFromUrl(): String {
         .lowercase()
         .trim()
 
-    return if (suffix.length in 2..5 && suffix.all { it.isLetterOrDigit() }) {
+    return if (suffix == "m3u8") {
+        "ts"
+    } else if (suffix.length in 2..5 && suffix.all { it.isLetterOrDigit() }) {
         suffix
     } else {
         "mp4"
     }
 }
 
-private fun String.isSupportedDownloadUrl(): Boolean {
-    val normalized = trim().lowercase()
-    if (normalized.startsWith("magnet:")) return false
-    if (normalized.endsWith(".m3u8") || normalized.contains(".m3u8?")) return false
-    if (normalized.endsWith(".mpd") || normalized.contains(".mpd?")) return false
-    if (normalized.endsWith(".torrent") || normalized.contains(".torrent?")) return false
-    return normalized.startsWith("http://") || normalized.startsWith("https://")
-}

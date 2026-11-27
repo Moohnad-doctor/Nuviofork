@@ -24,17 +24,25 @@ internal object DownloadSubtitles {
         val storage = DownloadSubtitleStorage(localVideoUri)
         val manifest = readManifest(storage)
         val saved = manifest.tracks.filter { storage.localFileUri(it.fileName) != null }.toMutableList()
-        if (manifest.complete && saved.size == manifest.tracks.size) return@withContext
         var nextFileIndex = (saved.maxOfOrNull { it.fileName.substringBefore('.').toIntOrNull() ?: -1 } ?: -1) + 1
         val addonSubtitles = loadAddonSubtitles(item.subtitleRequests).map {
             StreamSubtitle(url = it.url, language = it.language, name = it.display)
         }
-        val pending = (item.sourceSubtitles + addonSubtitles)
+        val allAvailable = item.sourceSubtitles + addonSubtitles
+        val allPending = allAvailable
             .distinctBy { it.url }
             .filter { subtitle ->
                 (subtitle.url.startsWith("https://", true) || subtitle.url.startsWith("http://", true)) &&
                     saved.none { it.sourceUrl == subtitle.url }
             }
+        val hasSavedArabic = saved.any { isArabicDownloadSubtitle(it.language, it.name) }
+        val hasAvailableArabic = allAvailable.any(::isArabicDownloadSubtitle)
+        if (manifest.complete && saved.size == manifest.tracks.size && (hasSavedArabic || !hasAvailableArabic)) {
+            return@withContext
+        }
+        val arabicCandidates = allPending.filter(::isArabicDownloadSubtitle)
+        val preferredArabic = arabicCandidates.sortedBy { arabicSubtitleRank(it.language, it.name) }.take(1)
+        val pending = preferredArabic + allPending.filterNot(::isArabicDownloadSubtitle)
         for (batch in pending.chunked(4)) {
             val fetched = coroutineScope {
                 batch.map { subtitle ->
@@ -42,7 +50,14 @@ internal object DownloadSubtitles {
                         val body = try {
                             withTimeoutOrNull(15_000L) {
                                 httpGetTextWithHeaders(subtitle.url, subtitle.headers.orEmpty())
-                            }?.takeIf { it.isNotBlank() && PlayerSubtitleCueParser.parse(it, subtitle.url).isNotEmpty() }
+                            }?.let(::sanitizeDownloadedSubtitle)
+                                ?.let { text ->
+                                    if (isArabicDownloadSubtitle(subtitle)) normalizeArabicSubtitleToSrt(text, subtitle.url) else text
+                                }
+                                ?.takeIf { text ->
+                                    val parseUrl = if (isArabicDownloadSubtitle(subtitle)) "offline.ar.srt" else subtitle.url
+                                    text.isNotBlank() && PlayerSubtitleCueParser.parse(text, parseUrl).isNotEmpty()
+                                }
                         } catch (error: Exception) {
                             if (error is CancellationException) throw error
                             null
@@ -54,8 +69,12 @@ internal object DownloadSubtitles {
             for ((subtitle, body) in fetched) {
                 currentCoroutineContext().ensureActive()
                 if (body == null) continue
-                val extension = PlayerSubtitleCueParser.fileExtension(body, subtitle.url)
-                val fileName = "${nextFileIndex++}.$extension"
+                val extension = if (isArabicDownloadSubtitle(subtitle)) "srt" else PlayerSubtitleCueParser.fileExtension(body, subtitle.url)
+                val fileName = if (isArabicDownloadSubtitle(subtitle)) {
+                    if (extension.equals("srt", true)) "arabic.ar.srt" else "arabic.ar.$extension"
+                } else {
+                    "${nextFileIndex++}.$extension"
+                }
                 try {
                     storage.write(fileName, body)
                     saved += DownloadedSubtitle(subtitle.url, fileName, subtitle.language, subtitle.name)
@@ -85,6 +104,59 @@ internal object DownloadSubtitles {
         runCatching {
             storage.read("manifest.json")?.let { json.decodeFromString<SubtitleManifest>(it) }
         }.getOrNull() ?: SubtitleManifest()
+}
+
+internal fun normalizeArabicSubtitleToSrt(text: String, sourceUrl: String): String {
+    if (!text.trimStart().startsWith("WEBVTT", ignoreCase = true) &&
+        !PlayerSubtitleCueParser.fileExtension(text, sourceUrl).equals("vtt", ignoreCase = true)
+    ) return text
+
+    val withoutHeader = text.replaceFirst(
+        Regex("(?i)^\\uFEFF?WEBVTT[^\\r\\n]*(?:\\r?\\n)?"),
+        "",
+    )
+    val normalizedTimestamps = Regex("(?:(\\d{2}):)?(\\d{2}):(\\d{2})\\.(\\d{3})")
+        .replace(withoutHeader) { match ->
+            "${match.groupValues[1].ifBlank { "00" }}:${match.groupValues[2]}:${match.groupValues[3]},${match.groupValues[4]}"
+        }
+    return Regex("(-->\\s*\\d{2}:\\d{2}:\\d{2},\\d{3})\\s+[^\\r\\n]+")
+        .replace(normalizedTimestamps, "$1")
+}
+
+internal fun isArabicDownloadSubtitle(subtitle: StreamSubtitle): Boolean =
+    isArabicDownloadSubtitle(subtitle.language, subtitle.name)
+
+private fun isArabicDownloadSubtitle(language: String, name: String?): Boolean {
+    val tag = language.trim().lowercase().replace('_', '-')
+    return tag == "ar" || tag == "ara" || tag.startsWith("ar-") ||
+        name.orEmpty().any { it in '\u0600'..'\u06FF' }
+}
+
+private fun arabicSubtitleRank(language: String, name: String?): Int = when (language.trim().lowercase()) {
+    "ar" -> 0
+    "ara" -> 1
+    else -> if (name.orEmpty().any { it in '\u0600'..'\u06FF' }) 2 else 3
+}
+
+internal fun sanitizeDownloadedSubtitle(input: String): String {
+    val withoutBom = input.removePrefix("\uFEFF")
+    val looksLikeUtf8DecodedAsLatin1 = withoutBom.count { it == 'Ã' || it == 'Ø' || it == 'Ù' || it == 'Â' } >= 2
+    if (!looksLikeUtf8DecodedAsLatin1) return withoutBom
+    val cp1252 = "\u20AC\u0081\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u008D\u017D\u008F\u0090\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u009D\u017E\u0178"
+    val bytes = ByteArray(withoutBom.length)
+    for (index in withoutBom.indices) {
+        val code = withoutBom[index].code
+        val byteValue = when {
+            code <= 0xFF -> code
+            cp1252.indexOf(withoutBom[index]) >= 0 -> 0x80 + cp1252.indexOf(withoutBom[index])
+            else -> return withoutBom
+        }
+        bytes[index] = byteValue.toByte()
+    }
+    val repaired = bytes.decodeToString()
+    val originalArabic = withoutBom.count { it in '\u0600'..'\u06FF' }
+    val repairedArabic = repaired.count { it in '\u0600'..'\u06FF' }
+    return (if (repairedArabic > originalArabic) repaired else withoutBom).removePrefix("\uFEFF")
 }
 
 @Serializable

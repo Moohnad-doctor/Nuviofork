@@ -36,6 +36,9 @@ internal suspend fun transferAndroidDownload(
         try {
             require(File(item.fileName).name == item.fileName && item.fileName.isNotBlank())
             check(directory.isDirectory || directory.mkdirs()) { "Cannot create downloads directory" }
+            if (item.sourceUrl.isHlsPlaylistUrl()) {
+                return@async transferAndroidHlsDownload(item, directory, client, onHeaders, onProgress)
+            }
             val partial = File(directory, "${item.fileName}.part")
             var offset = partial.takeIf(File::isFile)?.length() ?: 0L
             var restarted = false
@@ -111,6 +114,82 @@ internal suspend fun transferAndroidDownload(
     } finally {
         activeCall.get()?.cancel()
     }
+}
+
+private fun String.isHlsPlaylistUrl(): Boolean = substringBefore('?').substringBefore('#').endsWith(".m3u8", ignoreCase = true)
+
+private suspend fun transferAndroidHlsDownload(
+    item: DownloadItem,
+    directory: File,
+    client: OkHttpClient,
+    onHeaders: (Long?, String?) -> Unit,
+    onProgress: (Long, Long?) -> Unit,
+): File {
+    val partial = File(directory, "${item.fileName}.part")
+    partial.delete() // HLS segments are restarted as a complete playlist, never byte-range resumed.
+    val playlistRequest = Request.Builder().url(item.sourceUrl).apply {
+        item.sourceHeaders.forEach { (key, value) -> header(key, value) }
+    }.build()
+    val playlistResponse = client.newCall(playlistRequest).execute()
+    val (playlistUrl, playlistText) = playlistResponse.use { response ->
+        if (!response.isSuccessful) throw DownloadHttpException(response.code)
+        val body = response.body?.string() ?: throw IOException("HLS playlist is empty")
+        response.request.url to body
+    }
+    val playlistLines = playlistText.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+    val variantLine = playlistLines.indices.filter { playlistLines[it].startsWith("#EXT-X-STREAM-INF", true) }
+        .mapNotNull { index ->
+            val uri = playlistLines.drop(index + 1).firstOrNull { !it.startsWith("#") } ?: return@mapNotNull null
+            val bandwidth = Regex("BANDWIDTH=(\\d+)", RegexOption.IGNORE_CASE).find(playlistLines[index])?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+            bandwidth to uri
+        }.maxByOrNull { it.first }?.second
+    val mediaUrl = variantLine?.let { playlistUrl.resolve(it) } ?: playlistUrl
+        ?: throw IOException("HLS variant URL is invalid")
+    val mediaText = if (variantLine == null) playlistText else {
+        val request = Request.Builder().url(mediaUrl).apply { item.sourceHeaders.forEach { (key, value) -> header(key, value) } }.build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw DownloadHttpException(response.code)
+            response.body?.string() ?: throw IOException("HLS media playlist is empty")
+        }
+    }
+    if (Regex("#EXT-X-KEY:(?!.*METHOD=NONE)", RegexOption.IGNORE_CASE).containsMatchIn(mediaText) ||
+        mediaText.contains("#EXT-X-MAP", true) || mediaText.contains("#EXT-X-BYTERANGE", true)) {
+        throw IOException("Encrypted, fragmented MP4, and byte-range HLS playlists are not supported yet")
+    }
+    val mediaBaseUrl = if (variantLine == null) playlistUrl else mediaUrl
+    val segments = mediaText.lineSequence().map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .mapNotNull { mediaBaseUrl.resolve(it) }
+        .toList()
+    if (segments.isEmpty()) throw IOException("HLS playlist contains no media segments")
+    onHeaders(null, null)
+    var downloaded = 0L
+    FileOutputStream(partial, false).use { output ->
+        segments.forEach { segmentUrl ->
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val request = Request.Builder().url(segmentUrl).apply {
+                item.sourceHeaders.forEach { (key, value) -> header(key, value) }
+            }.build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw DownloadHttpException(response.code)
+                val body = response.body ?: throw IOException("HLS segment is empty")
+                body.byteStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                        downloaded += count
+                        onProgress(downloaded, null)
+                    }
+                }
+            }
+        }
+        output.fd.sync()
+    }
+    if (downloaded == 0L) throw IOException("HLS download produced an empty file")
+    return partial
 }
 
 internal fun parseDownloadContentRange(value: String): Pair<Long, Long?>? {

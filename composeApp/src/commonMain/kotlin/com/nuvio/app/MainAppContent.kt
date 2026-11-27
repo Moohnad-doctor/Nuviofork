@@ -421,6 +421,7 @@ internal fun MainAppContent(
 
         when (tab) {
             AppScreenTab.Home -> homeScrollToTopRequests.tryEmit(Unit)
+            AppScreenTab.Downloads -> Unit
             AppScreenTab.Search -> {
                 searchFocusRequestCount++
                 searchScrollToTopRequests.tryEmit(Unit)
@@ -1453,7 +1454,10 @@ internal fun MainAppContent(
                                         activateTab(AppScreenTab.Settings)
                                     }
                                 },
-                                onDownloadsClick = { navController.navigate(DownloadsRoute(downloadsTitle)) },
+                                onDownloadsClick = { activateTab(AppScreenTab.Downloads) },
+                                onDownloadsBack = { activateTab(AppScreenTab.Home) },
+                                onOpenDownload = ::openDownloadedItem,
+                                onOpenDownloadDetails = { item -> navController.navigate(DetailRoute(type = item.parentMetaType, id = item.parentMetaId, title = item.title)) },
                                 onContinueWatchingClick = onContinueWatchingClick,
                                 onContinueWatchingLongPress = onContinueWatchingLongPress,
                                 onSwitchProfile = onSwitchProfile,

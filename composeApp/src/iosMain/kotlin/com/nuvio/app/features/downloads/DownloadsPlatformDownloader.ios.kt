@@ -189,6 +189,22 @@ internal actual object DownloadsPlatformDownloader {
         }
     }
 
+    actual fun supportsDownloadUrl(url: String): Boolean {
+        val normalized = url.trim().lowercase()
+        return (normalized.startsWith("http://") || normalized.startsWith("https://")) &&
+            !normalized.contains(".m3u8") && !normalized.contains(".mpd") && !normalized.contains(".torrent")
+    }
+
+    actual fun openExternalUrl(url: String): Boolean {
+        val nativeUrl = NSURL(string = url.trim()) ?: return false
+        UIApplication.sharedApplication.openURL(
+            url = nativeUrl,
+            options = emptyMap<Any?, Any>(),
+            completionHandler = null,
+        )
+        return true
+    }
+
     actual fun openDownloadsDirectory(): Boolean {
         val url = NSURL.fileURLWithPath(downloadsDirectoryPath())
         UIApplication.sharedApplication.openURL(

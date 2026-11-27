@@ -34,9 +34,11 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.SearchOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -72,7 +74,9 @@ import com.nuvio.app.core.ui.dismissNuvioBottomSheet
 import com.nuvio.app.core.ui.featherArtwork
 import com.nuvio.app.core.ui.rememberArtworkBackdrop
 import com.nuvio.app.features.downloads.DownloadsRepository
+import com.nuvio.app.features.downloads.DownloadsPlatformDownloader
 import com.nuvio.app.features.details.MetaScreenSettingsRepository
+import com.nuvio.app.features.details.MetaDetailsRepository
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -164,6 +168,7 @@ fun StreamsScreen(
     val streamLinkCopiedText = stringResource(Res.string.streams_link_copied)
     val noDirectStreamLinkText = stringResource(Res.string.streams_no_direct_link)
     var streamActionsTarget by remember(videoId) { mutableStateOf<StreamItem?>(null) }
+    var pendingDownloadStream by remember(videoId) { mutableStateOf<StreamItem?>(null) }
     val downloadScope = rememberCoroutineScope()
     var preferredFilterApplied by remember(videoId) { mutableStateOf(false) }
     val episodeProgress = watchProgressUiState.progressForVideo(
@@ -303,6 +308,69 @@ fun StreamsScreen(
         }
 
 
+    val enqueueSelectedStream: (StreamItem) -> Unit = { selectedStream ->
+        val collectionMeta = MetaDetailsRepository.peek(parentMetaType, parentMetaId)
+        val collectionName = collectionMeta?.collectionName
+        val collectionId = collectionMeta?.collectionId
+        val collectionPoster = collectionMeta?.collectionItems?.firstOrNull()?.poster
+        val releaseYear = Regex("\\b(19|20)\\d{2}\\b").find(collectionMeta?.releaseInfo.orEmpty())?.value?.toIntOrNull()
+        if (DirectDebridPlaybackResolver.shouldResolveToPlayableStream(selectedStream)) {
+            downloadScope.launch {
+                val resolved = DirectDebridPlaybackResolver.resolveToPlayableStream(
+                    stream = selectedStream,
+                    season = seasonNumber,
+                    episode = episodeNumber,
+                )
+                when (resolved) {
+                    is DirectDebridPlayableResult.Success -> {
+                        val result = DownloadsRepository.enqueueFromStream(
+                            contentType = type,
+                            videoId = videoId,
+                            parentMetaId = parentMetaId,
+                            parentMetaType = parentMetaType,
+                            title = title,
+                            logo = logo,
+                            poster = poster,
+                            background = background,
+                            seasonNumber = seasonNumber,
+                            episodeNumber = episodeNumber,
+                            episodeTitle = episodeTitle,
+                            episodeThumbnail = episodeThumbnail,
+                            stream = resolved.stream,
+                            collectionName = collectionName,
+                            collectionId = collectionId,
+                            collectionPoster = collectionPoster,
+                            releaseYear = releaseYear,
+                        )
+                        NuvioToastController.show(result.toastMessage())
+                    }
+                    else -> resolved.toastMessage()?.let(NuvioToastController::show)
+                }
+            }
+        } else {
+            val result = DownloadsRepository.enqueueFromStream(
+                contentType = type,
+                videoId = videoId,
+                parentMetaId = parentMetaId,
+                parentMetaType = parentMetaType,
+                title = title,
+                logo = logo,
+                poster = poster,
+                background = background,
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
+                episodeTitle = episodeTitle,
+                episodeThumbnail = episodeThumbnail,
+                stream = selectedStream,
+                collectionName = collectionName,
+                collectionId = collectionId,
+                collectionPoster = collectionPoster,
+                releaseYear = releaseYear,
+            )
+            NuvioToastController.show(result.toastMessage())
+        }
+    }
+
         StreamActionsSheet(
             stream = streamActionsTarget,
             externalPlayerEnabled = playerSettings.externalPlayerEnabled,
@@ -342,57 +410,17 @@ fun StreamsScreen(
                 }
             },
             onDownload = { stream ->
-                if (DirectDebridPlaybackResolver.shouldResolveToPlayableStream(stream)) {
-                    downloadScope.launch {
-                        val resolved = DirectDebridPlaybackResolver.resolveToPlayableStream(
-                            stream = stream,
-                            season = seasonNumber,
-                            episode = episodeNumber,
-                        )
-                        when (resolved) {
-                            is DirectDebridPlayableResult.Success -> {
-                                val result = DownloadsRepository.enqueueFromStream(
-                                    contentType = type,
-                                    videoId = videoId,
-                                    parentMetaId = parentMetaId,
-                                    parentMetaType = parentMetaType,
-                                    title = title,
-                                    logo = logo,
-                                    poster = poster,
-                                    background = background,
-                                    seasonNumber = seasonNumber,
-                                    episodeNumber = episodeNumber,
-                                    episodeTitle = episodeTitle,
-                                    episodeThumbnail = episodeThumbnail,
-                                    stream = resolved.stream,
-                                )
-                                NuvioToastController.show(result.toastMessage())
-                            }
-                            else -> {
-                                val message = resolved.toastMessage()
-                                if (message != null) {
-                                    NuvioToastController.show(message)
-                                }
-                            }
-                        }
+                val torrentUrl = stream.torrentMagnetUri
+                    ?: listOfNotNull(stream.url, stream.externalUrl).firstOrNull {
+                        it.substringBefore('?').endsWith(".torrent", ignoreCase = true)
+                    }
+                    ?: stream.torrentSchemeUri?.let { stream.p2pInfoHash?.let { hash -> "magnet:?xt=urn:btih:$hash" } }
+                if (torrentUrl != null) {
+                    if (!DownloadsPlatformDownloader.openExternalUrl(torrentUrl)) {
+                        NuvioToastController.show("لم يتم العثور على تطبيق لفتح رابط التورنت")
                     }
                 } else {
-                    val result = DownloadsRepository.enqueueFromStream(
-                        contentType = type,
-                        videoId = videoId,
-                        parentMetaId = parentMetaId,
-                        parentMetaType = parentMetaType,
-                        title = title,
-                        logo = logo,
-                        poster = poster,
-                        background = background,
-                        seasonNumber = seasonNumber,
-                        episodeNumber = episodeNumber,
-                        episodeTitle = episodeTitle,
-                        episodeThumbnail = episodeThumbnail,
-                        stream = stream,
-                    )
-                    NuvioToastController.show(result.toastMessage())
+                    pendingDownloadStream = stream
                 }
             },
             onOpen = { stream, openExternally ->
@@ -404,8 +432,34 @@ fun StreamsScreen(
                 )
             },
         )
+
+        pendingDownloadStream?.let { requestedStream ->
+            AlertDialog(
+                onDismissRequest = { pendingDownloadStream = null },
+                title = { Text("اختيار الجودة") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(1080, 720, 480).forEach { quality ->
+                            TextButton(onClick = {
+                                val selected = selectDownloadQualityStream(uiState.groups.flatMap { it.streams }, quality) ?: requestedStream.takeIf { !it.playableDirectUrl.isNullOrBlank() }
+                                pendingDownloadStream = null
+                                if (selected != null) enqueueSelectedStream(selected) else NuvioToastController.show(noDirectStreamLinkText)
+                            }) { Text("${quality}p") }
+                        }
+                        TextButton(onClick = {
+                            val selected = selectDownloadQualityStream(uiState.groups.flatMap { it.streams }, null) ?: requestedStream.takeIf { !it.playableDirectUrl.isNullOrBlank() }
+                            pendingDownloadStream = null
+                            if (selected != null) enqueueSelectedStream(selected) else NuvioToastController.show(noDirectStreamLinkText)
+                        }) { Text("أعلى جودة متاحة") }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { pendingDownloadStream = null }) { Text("إلغاء") } },
+            )
+        }
     }
 }
+
+
 
 @Composable
 private fun MobileStreamsLayout(

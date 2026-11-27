@@ -15,6 +15,19 @@ class FloatingNavigationBarRtlTest {
     }
 
     @Test
+    fun `five tab RTL order places Downloads directly after Home`() {
+        val count = 5
+        assertEquals(4, visualNavIndex(0, count, isRtl = true), "Home must be rightmost")
+        assertEquals(3, visualNavIndex(1, count, isRtl = true), "Downloads must sit immediately left of Home")
+        assertEquals(2, visualNavIndex(2, count, isRtl = true), "Search must sit immediately left of Downloads")
+        assertEquals(1, visualNavIndex(3, count, isRtl = true), "Library follows Search")
+        assertEquals(0, visualNavIndex(4, count, isRtl = true), "Profile is leftmost")
+        for (logical in 0 until count) {
+            assertEquals(logical, logicalNavIndex(visualNavIndex(logical, count, true), count, true))
+        }
+    }
+
+    @Test
     fun `visualNavIndex maps LTR destinations to identity positions`() {
         val count = 4
         // LTR first item

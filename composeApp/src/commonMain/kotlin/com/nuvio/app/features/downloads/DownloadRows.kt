@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +43,7 @@ import nuvio.composeapp.generated.resources.compose_action_pause
 import nuvio.composeapp.generated.resources.details_actions_menu_label
 import nuvio.composeapp.generated.resources.downloads_downloading_count
 import nuvio.composeapp.generated.resources.downloads_episodes
+import nuvio.composeapp.generated.resources.downloads_titles
 import nuvio.composeapp.generated.resources.downloads_speed
 import nuvio.composeapp.generated.resources.downloads_status_downloading
 import nuvio.composeapp.generated.resources.downloads_status_failed
@@ -115,11 +117,42 @@ internal fun DownloadedMovieRow(
 }
 
 @Composable
+internal fun DownloadedCollectionRow(
+    cover: DownloadItem,
+    title: String,
+    movieCount: Int,
+    sizeBytes: Long,
+    onOpen: () -> Unit,
+) {
+    val tokens = MaterialTheme.nuvio
+    DownloadRow(
+        artwork = { DownloadPoster(item = cover) },
+        title = title,
+        subtitle = listOf(
+            stringResource(Res.string.media_movie),
+            pluralStringResource(Res.plurals.downloads_titles, movieCount, movieCount),
+            formatBytes(sizeBytes),
+        ).joinToString(DownloadTextSeparator),
+        onClick = onOpen,
+        onLongClick = null,
+        trailing = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = tokens.colors.textMuted,
+                modifier = Modifier.padding(horizontal = NuvioTokens.Space.s12),
+            )
+        },
+    )
+}
+
+@Composable
 internal fun DownloadedShowRow(
     cover: DownloadItem,
     episodeCount: Int,
     sizeBytes: Long,
     downloadingCount: Int,
+    combinedProgress: Float,
     onOpen: () -> Unit,
 ) {
     val tokens = MaterialTheme.nuvio
@@ -139,6 +172,12 @@ internal fun DownloadedShowRow(
             if (downloadingCount > 0) {
                 StatusText(text = stringResource(Res.string.downloads_downloading_count, downloadingCount))
             }
+            LinearProgressIndicator(
+                progress = { combinedProgress },
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
         },
         trailing = {
             Icon(
