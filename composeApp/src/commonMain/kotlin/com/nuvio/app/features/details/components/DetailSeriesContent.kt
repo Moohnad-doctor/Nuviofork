@@ -304,6 +304,7 @@ private fun SeasonDownloadBatchPanel(meta: MetaDetails, season: Int, episodes: L
             var queued = 0
             var skipped = 0
             for (episode in batch) {
+                try {
                 val episodeSeason = episode.season ?: season
                 val episodeNumber = episode.episode
                 if (episodeNumber == null) { skipped++; continue }
@@ -322,6 +323,9 @@ private fun SeasonDownloadBatchPanel(meta: MetaDetails, season: Int, episodes: L
                     releaseYear = year,
                 )
                 if (result == DownloadEnqueueResult.Started || result == DownloadEnqueueResult.Replaced) queued++ else skipped++
+                } catch (_: Exception) {
+                    skipped++
+                }
             }
             isDownloading = false
             NuvioToastController.show(if (skipped == 0) getString(Res.string.downloads_batch_done, queued) else getString(Res.string.downloads_batch_partial, queued, skipped))

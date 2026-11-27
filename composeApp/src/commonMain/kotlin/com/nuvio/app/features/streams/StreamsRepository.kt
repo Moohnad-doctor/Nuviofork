@@ -603,7 +603,7 @@ object StreamsRepository {
 
 /** Selects a direct HTTP/HLS source at the requested quality, falling back to the closest available resolution. */
 fun selectDownloadQualityStream(candidates: List<StreamItem>, preferredQuality: Int?): StreamItem? {
-    val direct = candidates.filter { stream -> stream.playableDirectUrl?.let(DownloadsPlatformDownloader::supportsDownloadUrl) == true }
+    val direct = candidates.filter { stream -> stream.playableDirectUrl?.let { url -> DownloadsPlatformDownloader.supportsDownloadUrl(url) } == true }
     if (direct.isEmpty()) return null
     val scored = direct.mapNotNull { candidate -> candidate.downloadResolution()?.let { candidate to it } }
     if (preferredQuality == null) return scored.maxByOrNull { it.second }?.first ?: direct.firstOrNull()
