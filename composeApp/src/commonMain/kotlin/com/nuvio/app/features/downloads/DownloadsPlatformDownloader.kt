@@ -32,4 +32,6 @@ internal expect object DownloadsPlatformDownloader {
     fun openDownloadsDirectory(): Boolean
 
     fun openExternalUrl(url: String): Boolean
+
+    fun supportsDownloadUrl(url: String): Boolean
 }

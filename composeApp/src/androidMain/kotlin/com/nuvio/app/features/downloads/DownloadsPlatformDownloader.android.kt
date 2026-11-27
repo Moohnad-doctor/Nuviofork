@@ -100,6 +100,13 @@ internal actual object DownloadsPlatformDownloader {
         return localFile.takeIf { it.exists() }?.toURI()?.toString()
     }
 
+    actual fun supportsDownloadUrl(url: String): Boolean {
+        val normalized = url.trim().lowercase()
+        return (normalized.startsWith("http://") || normalized.startsWith("https://")) &&
+            !normalized.endsWith(".mpd") && !normalized.contains(".mpd?") &&
+            !normalized.endsWith(".torrent") && !normalized.contains(".torrent?")
+    }
+
     actual fun openExternalUrl(url: String): Boolean {
         val context = appContext ?: return false
         val value = url.trim().takeIf { it.isNotBlank() } ?: return false

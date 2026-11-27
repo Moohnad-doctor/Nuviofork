@@ -7,6 +7,7 @@ import com.nuvio.app.features.addons.enabledAddons
 import com.nuvio.app.features.debrid.DirectDebridStreamPreparer
 import com.nuvio.app.features.debrid.DebridSettingsRepository
 import com.nuvio.app.features.debrid.DebridStreamPresentation
+import com.nuvio.app.features.downloads.DownloadsPlatformDownloader
 import com.nuvio.app.features.details.MetaDetailsRepository
 import com.nuvio.app.features.player.PlayerSettingsRepository
 import com.nuvio.app.features.plugins.PluginRepository
@@ -602,7 +603,7 @@ object StreamsRepository {
 
 /** Selects a direct HTTP/HLS source at the requested quality, falling back to the closest available resolution. */
 fun selectDownloadQualityStream(candidates: List<StreamItem>, preferredQuality: Int?): StreamItem? {
-    val direct = candidates.filter { stream -> stream.playableDirectUrl?.let { it.startsWith("https://", true) || it.startsWith("http://", true) } == true }
+    val direct = candidates.filter { stream -> stream.playableDirectUrl?.let(DownloadsPlatformDownloader::supportsDownloadUrl) == true }
     if (direct.isEmpty()) return null
     val scored = direct.mapNotNull { candidate -> candidate.downloadResolution()?.let { candidate to it } }
     if (preferredQuality == null) return scored.maxByOrNull { it.second }?.first ?: direct.firstOrNull()

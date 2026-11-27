@@ -136,7 +136,7 @@ private suspend fun transferAndroidHlsDownload(
         val body = response.body?.string() ?: throw IOException("HLS playlist is empty")
         response.request.url to body
     }
-    val playlistLines = playlistText.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+    val playlistLines = playlistText.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
     val variantLine = playlistLines.indices.filter { playlistLines[it].startsWith("#EXT-X-STREAM-INF", true) }
         .mapNotNull { index ->
             val uri = playlistLines.drop(index + 1).firstOrNull { !it.startsWith("#") } ?: return@mapNotNull null
@@ -157,7 +157,7 @@ private suspend fun transferAndroidHlsDownload(
         throw IOException("Encrypted, fragmented MP4, and byte-range HLS playlists are not supported yet")
     }
     val mediaBaseUrl = if (variantLine == null) playlistUrl else mediaUrl
-    val segments = mediaText.lineSequence().map(String::trim)
+    val segments = mediaText.lineSequence().map { it.trim() }
         .filter { it.isNotEmpty() && !it.startsWith("#") }
         .mapNotNull { mediaBaseUrl.resolve(it) }
         .toList()
