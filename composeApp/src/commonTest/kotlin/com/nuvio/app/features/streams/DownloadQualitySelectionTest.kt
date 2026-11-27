@@ -14,7 +14,7 @@ class DownloadQualitySelectionTest {
 
     @Test
     fun exactRequestedQualityWins() {
-        val hd = stream("1080p", "https://cdn.example/1080.m3u8")
+        val hd = stream("1080p", "https://cdn.example/1080.mp4")
         val sd = stream("480p", "https://cdn.example/480.mp4")
         assertEquals(hd, selectDownloadQualityStream(listOf(sd, hd), 1080))
     }
@@ -29,7 +29,7 @@ class DownloadQualitySelectionTest {
     @Test
     fun highestQualityChoosesMaximumResolution() {
         val hd = stream("1080p", "https://cdn.example/1080.mp4")
-        val ultra = stream("2160p", "https://cdn.example/2160.m3u8")
+        val ultra = stream("2160p", "https://cdn.example/2160.mp4")
         assertEquals(ultra, selectDownloadQualityStream(listOf(hd, ultra), null))
     }
 
