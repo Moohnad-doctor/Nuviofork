@@ -38,6 +38,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,6 +71,11 @@ import com.nuvio.app.core.i18n.localizedSeasonEpisodeCode
 import com.nuvio.app.core.ui.NuvioAnimatedWatchedBadge
 import com.nuvio.app.core.ui.NuvioCardDepthSurface
 import com.nuvio.app.core.ui.NuvioProgressBar
+import com.nuvio.app.core.ui.NuvioToastController
+import com.nuvio.app.features.downloads.DownloadsRepository
+import com.nuvio.app.features.downloads.DownloadEnqueueResult
+import com.nuvio.app.features.streams.StreamsRepository
+import com.nuvio.app.features.streams.selectDownloadQualityStream
 import com.nuvio.app.core.ui.backdropControlColor
 import com.nuvio.app.core.ui.nuvioCardDepth
 import com.nuvio.app.core.ui.nuvioHorizontalScrollBleed
@@ -216,6 +225,7 @@ fun DetailSeriesContent(
                         )
                     }
                     val seasonEpisodes = groupedEpisodes.getValue(seasonForContent)
+                    SeasonDownloadBatchPanel(meta = meta, season = seasonForContent, episodes = seasonEpisodes)
                     if (episodeCardStyle == MetaEpisodeCardStyle.Horizontal) {
                         EpisodeHorizontalRow(
                             episodes = seasonEpisodes,
@@ -276,6 +286,74 @@ fun DetailSeriesContent(
 }
 
 @Composable
+@Composable
+private fun SeasonDownloadBatchPanel(meta: MetaDetails, season: Int, episodes: List<MetaVideo>) {
+    val scope = rememberCoroutineScope()
+    val episodeKeys = remember(episodes) { episodes.map { episode -> "${episode.season ?: season}:${episode.episode ?: episode.id}" } }
+    var selectedKeys by rememberSaveable(meta.id, season) { mutableStateOf(episodeKeys.toSet()) }
+    var showQualityPicker by rememberSaveable(meta.id, season) { mutableStateOf(false) }
+    var isDownloading by rememberSaveable(meta.id, season) { mutableStateOf(false) }
+    val selectedEpisodes = episodes.filterIndexed { index, _ -> episodeKeys[index] in selectedKeys }
+
+    fun enqueueEpisodes(preferredQuality: Int?) {
+        if (isDownloading) return
+        val batch = selectedEpisodes.sortedWith(compareBy<MetaVideo> { it.season ?: season }.thenBy { it.episode ?: Int.MAX_VALUE })
+        isDownloading = true
+        scope.launch {
+            DownloadsRepository.ensureLoaded()
+            var queued = 0
+            var skipped = 0
+            for (episode in batch) {
+                val episodeSeason = episode.season ?: season
+                val episodeNumber = episode.episode
+                if (episodeNumber == null) { skipped++; continue }
+                val playbackId = buildPlaybackVideoId(meta.id, episodeSeason, episodeNumber, episode.id)
+                val videoId = episode.id.takeIf { it.isNotBlank() } ?: playbackId
+                val streams = StreamsRepository.findDirectDownloadStreams(meta.type, videoId, meta.id, episodeSeason, episodeNumber)
+                val stream = selectDownloadQualityStream(streams, preferredQuality)
+                if (stream == null) { skipped++; continue }
+                val year = Regex("\\b(19|20)\\d{2}\\b").find(meta.releaseInfo.orEmpty())?.value?.toIntOrNull()
+                val result = DownloadsRepository.enqueueFromStream(
+                    contentType = meta.type, videoId = videoId, parentMetaId = meta.id, parentMetaType = meta.type,
+                    title = meta.name, logo = meta.logo, poster = meta.poster, background = meta.background,
+                    seasonNumber = episodeSeason, episodeNumber = episodeNumber, episodeTitle = episode.title,
+                    episodeThumbnail = episode.thumbnail, stream = stream, collectionName = meta.collectionName,
+                    collectionId = meta.collectionId, collectionPoster = meta.collectionItems.firstOrNull()?.poster,
+                    releaseYear = year,
+                )
+                if (result == DownloadEnqueueResult.Started || result == DownloadEnqueueResult.Replaced) queued++ else skipped++
+            }
+            isDownloading = false
+            NuvioToastController.show(if (skipped == 0) "تمت إضافة $queued حلقة للتنزيل" else "تمت إضافة $queued حلقة، وتعذّر تجهيز $skipped")
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("تحديد الحلقات", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            TextButton(enabled = !isDownloading, onClick = { selectedKeys = if (selectedKeys.size == episodeKeys.size) emptySet() else episodeKeys.toSet() }) {
+                Text(if (selectedKeys.size == episodeKeys.size) "إلغاء التحديد" else "تحديد الكل")
+            }
+        }
+        episodes.forEachIndexed { index, episode ->
+            val key = episodeKeys[index]
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = key in selectedKeys, enabled = !isDownloading, onCheckedChange = { checked -> selectedKeys = if (checked) selectedKeys + key else selectedKeys - key })
+                Text(text = "${episode.episode?.let { "الحلقة $it" } ?: "حلقة"} · ${episode.title}", style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Button(onClick = { showQualityPicker = true }, enabled = selectedEpisodes.isNotEmpty() && !isDownloading, modifier = Modifier.fillMaxWidth()) {
+            Text(if (isDownloading) "جارٍ إضافة الحلقات..." else "تنزيل الموسم (${selectedEpisodes.size})")
+        }
+    }
+    if (showQualityPicker) {
+        AlertDialog(onDismissRequest = { showQualityPicker = false }, title = { Text("اختيار الجودة") },
+            text = { Column {
+                listOf(1080, 720, 480).forEach { quality -> TextButton(onClick = { showQualityPicker = false; enqueueEpisodes(quality) }) { Text("${quality}p") } }
+                TextButton(onClick = { showQualityPicker = false; enqueueEpisodes(null) }) { Text("أعلى جودة متاحة") }
+            } }, confirmButton = { TextButton(onClick = { showQualityPicker = false }) { Text("إلغاء") } })
+    }
+}
 internal fun DetailSeriesListHeader(
     meta: MetaDetails,
     groupedEpisodes: Map<Int, List<MetaVideo>>,

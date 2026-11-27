@@ -21,6 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -95,7 +96,7 @@ object StreamsRepository {
 
         activeRequestKey = requestKey
         activeJob?.cancel()
-        _uiState.value = StreamsUiState(requestToken = requestToken)
+        _uiState.value = StreamsUiState(requestToken = requestToken, isAnyLoading = true)
 
         PlayerSettingsRepository.ensureLoaded()
         val playerSettings = PlayerSettingsRepository.uiState.value
@@ -516,8 +517,17 @@ object StreamsRepository {
         }
     }
 
-    fun selectFilter(addonId: String?) {
-        _uiState.update { it.copy(selectedFilter = addonId) }
+    /** Loads one episode's sources and waits for that request to finish before returning direct URLs. */
+    suspend fun findDirectDownloadStreams(type: String, videoId: String, parentMetaId: String, season: Int, episode: Int): List<StreamItem> {
+        val token = requestToken(type, videoId, season, episode, manualSelection = true)
+        load(type, videoId, parentMetaId, season, episode, manualSelection = true)
+        val state = uiState.first { it.requestToken == token && !it.isAnyLoading && it.groups.none { group -> group.isLoading } }
+        return state.groups.flatMap { it.streams }.filter { stream ->
+            stream.playableDirectUrl?.let { it.startsWith("https://", true) || it.startsWith("http://", true) } == true
+        }
+    }
+
+    fun selectFilter(addonId: String?) {        _uiState.update { it.copy(selectedFilter = addonId) }
     }
 
     fun consumeAutoPlay() {
@@ -587,5 +597,26 @@ object StreamsRepository {
 
     fun setOverlayVisible(visible: Boolean, message: String? = null) {
         _uiState.update { it.copy(showDirectAutoPlayOverlay = visible, overlayMessage = message) }
+    }
+}
+
+/** Selects a direct HTTP/HLS source at the requested quality, falling back to the closest available resolution. */
+fun selectDownloadQualityStream(candidates: List<StreamItem>, preferredQuality: Int?): StreamItem? {
+    val direct = candidates.filter { stream -> stream.playableDirectUrl?.let { it.startsWith("https://", true) || it.startsWith("http://", true) } == true }
+    if (direct.isEmpty()) return null
+    val scored = direct.mapNotNull { candidate -> candidate.downloadResolution()?.let { candidate to it } }
+    if (preferredQuality == null) return scored.maxByOrNull { it.second }?.first ?: direct.firstOrNull()
+    return scored.firstOrNull { it.second == preferredQuality }?.first
+        ?: scored.minByOrNull { kotlin.math.abs(it.second - preferredQuality) }?.first
+        ?: direct.firstOrNull()
+}
+
+private fun StreamItem.downloadResolution(): Int? {
+    val metadata = listOfNotNull(streamLabel, streamSubtitle, behaviorHints.filename, clientResolve?.stream?.raw?.parsed?.resolution, clientResolve?.stream?.raw?.parsed?.quality).joinToString(" ")
+    Regex("(2160|1440|1080|720|576|480|360)\\s*p", RegexOption.IGNORE_CASE).find(metadata)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+    return when {
+        Regex("\\b4k\\b", RegexOption.IGNORE_CASE).containsMatchIn(metadata) -> 2160
+        Regex("\\b2k\\b", RegexOption.IGNORE_CASE).containsMatchIn(metadata) -> 1440
+        else -> null
     }
 }

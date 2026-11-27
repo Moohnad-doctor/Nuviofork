@@ -441,13 +441,13 @@ fun StreamsScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf(1080, 720, 480).forEach { quality ->
                             TextButton(onClick = {
-                                val selected = selectDownloadQualityStream(uiState.groups.flatMap { it.streams }, requestedStream, quality)
+                                val selected = selectDownloadQualityStream(uiState.groups.flatMap { it.streams }, quality) ?: requestedStream.takeIf { !it.playableDirectUrl.isNullOrBlank() }
                                 pendingDownloadStream = null
                                 if (selected != null) enqueueSelectedStream(selected) else NuvioToastController.show(noDirectStreamLinkText)
                             }) { Text("${quality}p") }
                         }
                         TextButton(onClick = {
-                            val selected = selectDownloadQualityStream(uiState.groups.flatMap { it.streams }, requestedStream, null)
+                            val selected = selectDownloadQualityStream(uiState.groups.flatMap { it.streams }, null) ?: requestedStream.takeIf { !it.playableDirectUrl.isNullOrBlank() }
                             pendingDownloadStream = null
                             if (selected != null) enqueueSelectedStream(selected) else NuvioToastController.show(noDirectStreamLinkText)
                         }) { Text("أعلى جودة متاحة") }
@@ -459,32 +459,7 @@ fun StreamsScreen(
     }
 }
 
-private fun selectDownloadQualityStream(
-    candidates: List<StreamItem>,
-    requested: StreamItem,
-    preferredQuality: Int?,
-): StreamItem? {
-    val direct = candidates.filter { !it.playableDirectUrl.isNullOrBlank() }
-    if (direct.isEmpty()) return requested.takeIf { !it.playableDirectUrl.isNullOrBlank() }
-    val scored = direct.mapNotNull { candidate -> candidate.downloadResolution()?.let { candidate to it } }
-    if (preferredQuality == null) return scored.maxByOrNull { it.second }?.first ?: direct.firstOrNull()
-    return scored.firstOrNull { it.second == preferredQuality }?.first
-        ?: scored.minByOrNull { kotlin.math.abs(it.second - preferredQuality) }?.first
-        ?: requested.takeIf { !it.playableDirectUrl.isNullOrBlank() }
-        ?: direct.firstOrNull()
-}
 
-private fun StreamItem.downloadResolution(): Int? {
-    val metadata = listOfNotNull(streamLabel, streamSubtitle, behaviorHints.filename,
-        clientResolve?.stream?.raw?.parsed?.resolution, clientResolve?.stream?.raw?.parsed?.quality).joinToString(" ")
-    Regex("(2160|1440|1080|720|576|480|360)\\s*p", RegexOption.IGNORE_CASE)
-        .find(metadata)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
-    return when {
-        Regex("\\b4k\\b", RegexOption.IGNORE_CASE).containsMatchIn(metadata) -> 2160
-        Regex("\\b2k\\b", RegexOption.IGNORE_CASE).containsMatchIn(metadata) -> 1440
-        else -> null
-    }
-}
 
 @Composable
 private fun MobileStreamsLayout(
