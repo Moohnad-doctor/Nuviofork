@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -286,7 +287,6 @@ fun DetailSeriesContent(
 }
 
 @Composable
-@Composable
 private fun SeasonDownloadBatchPanel(meta: MetaDetails, season: Int, episodes: List<MetaVideo>) {
     val scope = rememberCoroutineScope()
     val episodeKeys = remember(episodes) { episodes.map { episode -> "${episode.season ?: season}:${episode.episode ?: episode.id}" } }
@@ -354,6 +354,7 @@ private fun SeasonDownloadBatchPanel(meta: MetaDetails, season: Int, episodes: L
             } }, confirmButton = { TextButton(onClick = { showQualityPicker = false }) { Text("إلغاء") } })
     }
 }
+@Composable
 internal fun DetailSeriesListHeader(
     meta: MetaDetails,
     groupedEpisodes: Map<Int, List<MetaVideo>>,
