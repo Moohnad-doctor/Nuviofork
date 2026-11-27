@@ -2598,4 +2598,13 @@
     <string name="subtitle_shadow_size">Shadow size</string>
     <string name="subtitle_outline_width">Outline width</string>
     <string name="subtitle_reset_appearance">Reset appearance</string>
+    <string name="downloads_batch_select_episodes">Select episodes</string>
+    <string name="downloads_batch_select_all">Select all</string>
+    <string name="downloads_batch_deselect_all">Clear selection</string>
+    <string name="downloads_batch_start">Download season (%1$d)</string>
+    <string name="downloads_batch_adding">Adding episodes…</string>
+    <string name="downloads_batch_done">%1$d episodes added to downloads</string>
+    <string name="downloads_batch_partial">%1$d episodes added; %2$d could not be prepared</string>
+    <string name="downloads_quality_picker_title">Choose download quality</string>
+    <string name="downloads_quality_highest">Highest available quality</string>
 </resources>

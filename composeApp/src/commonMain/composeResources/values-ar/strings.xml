@@ -2527,4 +2527,13 @@
     <string name="subtitle_shadow_opacity">عتامة الظل</string>
     <string name="subtitle_shadow_size">حجم الظل</string>
     <string name="subtitle_reset_appearance">إعادة ضبط المظهر</string>
+    <string name="downloads_batch_select_episodes">تحديد الحلقات</string>
+    <string name="downloads_batch_select_all">تحديد الكل</string>
+    <string name="downloads_batch_deselect_all">إلغاء التحديد</string>
+    <string name="downloads_batch_start">تنزيل الموسم (%1$d)</string>
+    <string name="downloads_batch_adding">جارٍ إضافة الحلقات…</string>
+    <string name="downloads_batch_done">تمت إضافة %1$d حلقة للتنزيل</string>
+    <string name="downloads_batch_partial">تمت إضافة %1$d حلقة، وتعذّر تجهيز %2$d</string>
+    <string name="downloads_quality_picker_title">اختيار الجودة</string>
+    <string name="downloads_quality_highest">أعلى جودة متاحة</string>
 </resources>
